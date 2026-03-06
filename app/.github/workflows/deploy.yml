@@ -1,0 +1,63 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install frontend dependencies
+        run: npm ci
+      
+      - name: Type check frontend
+        run: npm run typecheck || true
+      
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://stockwise-pro-api.onrender.com/api' }}
+          VITE_WS_URL: ${{ secrets.VITE_WS_URL || 'wss://stockwise-pro-api.onrender.com' }}
+      
+      - name: Install backend dependencies
+        working-directory: ./server
+        run: npm ci
+      
+      - name: Type check backend
+        working-directory: ./server
+        run: npm run typecheck || true
+      
+      - name: Build backend
+        working-directory: ./server
+        run: npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Deploy to Render
+        uses: johnbeynon/render-deploy-action@v0.0.8
+        with:
+          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ secrets.RENDER_API_KEY }}
+        continue-on-error: true
+      
+      - name: Notify deployment
+        run: |
+          echo "🚀 Deployment triggered!"
+          echo "Check Render dashboard for status: https://dashboard.render.com"

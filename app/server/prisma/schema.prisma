@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String?
+  avatar        String?
+  plan          Plan      @default(FREE)
+  subscription  Subscription?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  watchlists    Watchlist[]
+  alerts        PriceAlert[]
+  portfolios    Portfolio[]
+  experiments   Experiment[]
+  sessions      Session[]
+  
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  plan      Plan
+  status    SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("subscriptions")
+}
+
+model Watchlist {
+  id        String   @id @default(uuid())
+  userId    String
+  ticker    String
+  name      String
+  addedAt   DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, ticker])
+  @@map("watchlists")
+}
+
+model PriceAlert {
+  id            String   @id @default(uuid())
+  userId        String
+  ticker        String
+  targetPrice   Float
+  condition     AlertCondition
+  isActive      Boolean  @default(true)
+  wasTriggered  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  triggeredAt   DateTime?
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("price_alerts")
+}
+
+model Portfolio {
+  id            String   @id @default(uuid())
+  userId        String
+  name          String
+  investorId    String?
+  budget        Float
+  holdings      PortfolioHolding[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("portfolios")
+}
+
+model PortfolioHolding {
+  id            String   @id @default(uuid())
+  portfolioId   String
+  ticker        String
+  name          String
+  shares        Int
+  price         Float
+  allocation    Float
+  value         Float
+  
+  portfolio     Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  @@map("portfolio_holdings")
+}
+
+model Experiment {
+  id            String   @id @default(uuid())
+  userId        String
+  name          String
+  formula       String
+  description   String?
+  results       Json?
+  createdAt     DateTime @default(now())
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("experiments")
+}
+
+model CachedStock {
+  ticker        String   @id
+  name          String
+  price         Float
+  change        Float
+  changePercent Float
+  marketCap     Float?
+  peRatio       Float?
+  pbRatio       Float?
+  psRatio       Float?
+  volume        Float?
+  avgVolume     Float?
+  fiftyTwoWeekHigh Float?
+  fiftyTwoWeekLow  Float?
+  sector        String?
+  score         Int      @default(50)
+  signal        String   @default("hold")
+  sparklineData Json?
+  lastUpdated   DateTime @default(now())
+  
+  @@map("cached_stocks")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ELITE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+}
+
+enum AlertCondition {
+  ABOVE
+  BELOW
+}

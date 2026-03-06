@@ -1,0 +1,91 @@
+# Render Blueprint for StockWise Pro
+# This file configures all services for deployment on Render
+# 
+# To deploy:
+# 1. Push this file to your GitHub repository
+# 2. Go to https://dashboard.render.com/blueprints
+# 3. Click "New Blueprint Instance"
+# 4. Connect your GitHub repository
+# 5. Render will automatically create all services defined below
+
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: stockwise-pro-db
+    runtime: docker
+    plan: starter
+    envVars:
+      - key: POSTGRES_USER
+        generateValue: true
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+      - key: POSTGRES_DB
+        value: stockwise_pro
+    disk:
+      name: postgres-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 10
+
+  # Backend API Server
+  - type: web
+    name: stockwise-pro-api
+    runtime: node
+    plan: starter
+    rootDir: app/server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockwise-pro-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: FMP_API_KEY
+        value: W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
+      - key: FMP_BASE_URL
+        value: https://financialmodelingprep.com/api/v3
+      - key: CLIENT_URL
+        value: https://stockwise-pro-web.onrender.com
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: alerts@stockwise.pro
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Frontend Web App
+  - type: web
+    name: stockwise-pro-web
+    runtime: static
+    plan: starter
+    rootDir: app
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://stockwise-pro-api.onrender.com/api
+      - key: VITE_WS_URL
+        value: wss://stockwise-pro-api.onrender.com
+      - key: VITE_FMP_API_KEY
+        value: W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
+    autoDeploy: true
+
+# Environment Groups (for shared secrets)
+envVarGroups:
+  - name: stockwise-pro-secrets
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
