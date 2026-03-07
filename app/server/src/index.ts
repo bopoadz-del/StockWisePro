@@ -18,7 +18,7 @@ import { experimentRouter } from './routes/experiments';
 import { userRouter } from './routes/user';
 import { errorHandler } from './middleware/errorHandler';
 import { StockPriceService } from './services/stockPriceService';
-import { AlertService } from './services/alertService';
+import { AlertService, AlertWithUser } from './services/alertService';
 import { EmailService } from './services/emailService';
 
 const app = express();

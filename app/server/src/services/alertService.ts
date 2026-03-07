@@ -5,9 +5,16 @@ import type { PriceAlert } from '@prisma/client';
 const FMP_API_KEY = process.env.FMP_API_KEY || 'W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ';
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
+export interface AlertWithUser extends PriceAlert {
+  user: {
+    email: string;
+    name: string | null;
+  };
+}
+
 export class AlertService {
-  async checkAlerts(): Promise<PriceAlert[]> {
-    const triggeredAlerts: PriceAlert[] = [];
+  async checkAlerts(): Promise<AlertWithUser[]> {
+    const triggeredAlerts: AlertWithUser[] = [];
 
     // Get all active alerts
     const alerts = await prisma.priceAlert.findMany({
@@ -47,7 +54,7 @@ export class AlertService {
 
         if (shouldTrigger) {
           // Update alert as triggered
-          const updatedAlert = await prisma.priceAlert.update({
+          await prisma.priceAlert.update({
             where: { id: alert.id },
             data: {
               wasTriggered: true,
@@ -55,7 +62,7 @@ export class AlertService {
             },
           });
 
-          triggeredAlerts.push(updatedAlert);
+          triggeredAlerts.push(alert);
         }
       }
     } catch (error) {
