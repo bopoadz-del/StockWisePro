@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,8 +39,8 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     let result = [...mockStocks];
 
     // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
       result = result.filter(
         (stock) =>
           stock.ticker.toLowerCase().includes(query) ||
@@ -121,8 +121,16 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
                 placeholder="Search by ticker or company name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 h-12 bg-[#141414] border-white/10 text-white placeholder:text-white/40 focus:border-gold focus:ring-gold/20"
+                className="pl-12 pr-10 h-12 bg-[#141414] border-white/10 text-white placeholder:text-white/40 focus:border-gold focus:ring-gold/20"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              )}
             </div>
             <Button
               variant="outline"
@@ -297,7 +305,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
                   }}
                   className="mt-4 text-gold hover:text-gold-light"
                 >
-                  Clear filters
+                  Clear Filters
                 </Button>
               </div>
             )}
