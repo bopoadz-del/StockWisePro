@@ -21,6 +21,7 @@ import {
   type FMPKeyMetrics,
 } from '@/lib/fmpApi';
 import { formatCurrency, formatPercentage, formatVolume, getScoreColor } from '@/lib/utils';
+import { mockStocks } from '@/lib/data';
 import { SignalBadge } from './SignalBadge';
 import { ScoreVisualizer } from './ScoreVisualizer';
 import {
@@ -74,25 +75,107 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
         fetchKeyMetrics(ticker),
       ]);
 
-      setQuote(quoteData);
-      setMetrics(metricsData);
+      if (quoteData) {
+        setQuote(quoteData);
+        setMetrics(metricsData);
 
-      // Fetch historical prices for chart
-      const to = new Date().toISOString().split('T')[0];
-      const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const historical = await fetchHistoricalPrices(ticker, from, to);
-      
-      setHistoricalData(
-        historical.reverse().map((h) => ({
-          date: h.date,
-          price: h.close,
-        }))
-      );
+        // Fetch historical prices for chart
+        const to = new Date().toISOString().split('T')[0];
+        const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const historical = await fetchHistoricalPrices(ticker, from, to);
+        
+        if (historical.length > 0) {
+          setHistoricalData(
+            historical.reverse().map((h) => ({
+              date: h.date,
+              price: h.close,
+            }))
+          );
+        } else {
+          // Generate mock historical data
+          generateMockHistoricalData(quoteData.price, quoteData.change);
+        }
+      } else {
+        // Fallback to mock data
+        loadMockStockData();
+      }
     } catch (error) {
-      console.error('Error loading stock data:', error);
+      console.log('API error, using mock data for', ticker);
+      loadMockStockData();
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMockStockData = () => {
+    const mockStock = mockStocks.find(s => s.ticker === ticker);
+    if (mockStock) {
+      setQuote({
+        symbol: mockStock.ticker,
+        name: mockStock.name,
+        price: mockStock.price,
+        changesPercentage: mockStock.changePercent,
+        change: mockStock.change,
+        dayLow: mockStock.price * 0.98,
+        dayHigh: mockStock.price * 1.02,
+        yearHigh: mockStock.fiftyTwoWeekHigh || mockStock.price * 1.2,
+        yearLow: mockStock.fiftyTwoWeekLow || mockStock.price * 0.8,
+        marketCap: mockStock.marketCap || 0,
+        priceAvg50: mockStock.price * 0.95,
+        priceAvg200: mockStock.price * 0.90,
+        volume: mockStock.volume || 1000000,
+        avgVolume: mockStock.avgVolume || 1000000,
+        exchange: 'NASDAQ',
+        open: mockStock.price * 0.99,
+        previousClose: mockStock.price - mockStock.change,
+        eps: 5.0,
+        pe: mockStock.peRatio || 20,
+        earningsAnnouncement: '',
+        sharesOutstanding: 1000000000,
+        timestamp: Date.now(),
+      });
+      setMetrics({
+        symbol: mockStock.ticker,
+        date: new Date().toISOString().split('T')[0],
+        peRatio: mockStock.peRatio || 20,
+        priceToBookRatio: mockStock.pbRatio || 3,
+        priceToSalesRatio: mockStock.psRatio || 5,
+        roe: 0.15,
+        roa: 0.08,
+        debtToEquity: 0.5,
+        currentRatio: 2.0,
+        quickRatio: 1.5,
+        dividendYield: mockStock.dividendYield || 0,
+        payoutRatio: 0.3,
+      });
+      if (mockStock.sparklineData) {
+        setHistoricalData(
+          mockStock.sparklineData.map((price, i) => ({
+            date: new Date(Date.now() - (mockStock.sparklineData!.length - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            price,
+          }))
+        );
+      } else {
+        generateMockHistoricalData(mockStock.price, mockStock.change);
+      }
+    }
+  };
+
+  const generateMockHistoricalData = (basePrice: number, change: number) => {
+    const data: { date: string; price: number }[] = [];
+    const days = 90;
+    const changePerDay = change / days;
+    
+    for (let i = days; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const randomVariation = (Math.random() - 0.5) * basePrice * 0.02;
+      const price = basePrice - (changePerDay * i) + randomVariation;
+      data.push({
+        date: date.toISOString().split('T')[0],
+        price: Math.max(0.01, price),
+      });
+    }
+    setHistoricalData(data);
   };
 
   const toggleWatchlist = () => {
