@@ -106,6 +106,12 @@ app.use('/api/portfolio', portfolioRouter);
 app.use('/api/experiments', experimentRouter);
 app.use('/api/user', userRouter);
 
+// Analytics endpoint (accepts and discards - frontend analytics are local-only)
+app.post('/api/analytics', (req, res) => {
+  // Analytics are stored locally in browser, server just accepts them
+  res.status(200).json({ received: true });
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
