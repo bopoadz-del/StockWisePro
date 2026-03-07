@@ -25,10 +25,35 @@ const app = express();
 const httpServer = createServer(app);
 
 // CORS configuration
+const allowedOrigins = config.nodeEnv === 'production'
+  ? [
+      config.clientUrl,
+      'https://stockwise-pro.onrender.com',
+      'https://stockwise-pro-web.onrender.com',
+      'https://stockwise-pro-api.onrender.com',
+      /\.onrender\.com$/,
+    ]
+  : ['http://localhost:5173', 'http://localhost:3000'];
+
 const corsOptions = {
-  origin: config.nodeEnv === 'production' 
-    ? [config.clientUrl, 'https://stockwise-pro.onrender.com', 'https://*.onrender.com']
-    : ['http://localhost:5173', 'http://localhost:3000'],
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
