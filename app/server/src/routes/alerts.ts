@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
@@ -6,7 +6,7 @@ import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
 const router = Router();
 
 // Get user's alerts
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const alerts = await prisma.priceAlert.findMany({
       where: { userId: req.user!.id },
@@ -24,7 +24,7 @@ router.post(
   '/',
   authenticate,
   requirePlan(['PRO', 'ELITE']),
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const schema = z.object({
         ticker: z.string().min(1),
@@ -87,7 +87,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Delete alert
-router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -105,7 +105,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Get alerts for a specific stock
-router.get('/stock/:ticker', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/stock/:ticker', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
 

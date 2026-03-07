@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
@@ -8,7 +8,7 @@ const FMP_API_KEY = process.env.FMP_API_KEY || 'W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
 // Search stocks
-router.get('/search', async (req, res, next) => {
+router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { q } = req.query;
     
@@ -140,7 +140,7 @@ router.get('/historical/:ticker', async (req, res, next) => {
 });
 
 // Get income statement
-router.get('/income/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req, res, next) => {
+router.get('/income/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
     const { limit = '4' } = req.query;
@@ -156,7 +156,7 @@ router.get('/income/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async
 });
 
 // Get balance sheet
-router.get('/balance/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req, res, next) => {
+router.get('/balance/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
     const { limit = '4' } = req.query;
@@ -172,7 +172,7 @@ router.get('/balance/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), asyn
 });
 
 // Get market indices
-router.get('/indices', async (req, res, next) => {
+router.get('/indices', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const indices = ['^GSPC', '^IXIC', '^DJI', '^RUT'];
     const response = await axios.get(
@@ -186,7 +186,7 @@ router.get('/indices', async (req, res, next) => {
 });
 
 // Get trending stocks
-router.get('/trending', async (req, res, next) => {
+router.get('/trending', async (req: Request, res: Response, next: NextFunction) => {
   try {
     // Get most active stocks
     const response = await axios.get(
@@ -200,7 +200,7 @@ router.get('/trending', async (req, res, next) => {
 });
 
 // Get all cached stocks (for screener)
-router.get('/screener', async (req, res, next) => {
+router.get('/screener', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const stocks = await prisma.cachedStock.findMany({
       orderBy: { score: 'desc' },

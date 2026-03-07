@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
@@ -18,7 +18,7 @@ const loginSchema = z.object({
 });
 
 // Register
-router.post('/register', async (req, res, next) => {
+router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password, name } = registerSchema.parse(req.body);
 
@@ -65,7 +65,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // Login
-router.post('/login', async (req, res, next) => {
+router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
@@ -104,7 +104,7 @@ router.post('/login', async (req, res, next) => {
 });
 
 // Get current user
-router.get('/me', async (req, res, next) => {
+router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     
@@ -120,7 +120,7 @@ router.get('/me', async (req, res, next) => {
 });
 
 // Forgot password
-router.post('/forgot-password', async (req, res, next) => {
+router.post('/forgot-password', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
 
@@ -134,7 +134,7 @@ router.post('/forgot-password', async (req, res, next) => {
 });
 
 // Reset password
-router.post('/reset-password', async (req, res, next) => {
+router.post('/reset-password', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { token, password } = z.object({
       token: z.string(),

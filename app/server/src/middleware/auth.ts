@@ -4,12 +4,14 @@ import { prisma } from '../utils/prisma';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  plan: string;
+}
+
 export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    plan: string;
-  };
+  user?: AuthUser;
 }
 
 export const authenticate = async (

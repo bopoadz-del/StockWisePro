@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
@@ -7,7 +7,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 // Get current user profile
-router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/profile', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
@@ -41,7 +41,7 @@ router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Update user profile
-router.patch('/profile', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/profile', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -69,7 +69,7 @@ router.patch('/profile', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Change password
-router.post('/change-password', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/change-password', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const schema = z.object({
       currentPassword: z.string(),
@@ -110,7 +110,7 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res, next
 });
 
 // Get user stats
-router.get('/stats', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/stats', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const stats = await prisma.$transaction([
       prisma.watchlist.count({ where: { userId: req.user!.id } }),
@@ -131,7 +131,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Delete account
-router.delete('/account', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/account', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     await prisma.user.delete({
       where: { id: req.user!.id },

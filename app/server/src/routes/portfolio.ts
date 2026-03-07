@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
@@ -6,7 +6,7 @@ import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
 const router = Router();
 
 // Get user's portfolios
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const portfolios = await prisma.portfolio.findMany({
       where: { userId: req.user!.id },
@@ -25,7 +25,7 @@ router.post(
   '/',
   authenticate,
   requirePlan(['ELITE']),
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const schema = z.object({
         name: z.string().min(1),
@@ -66,7 +66,7 @@ router.post(
 );
 
 // Get single portfolio
-router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -89,7 +89,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Update portfolio
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const schema = z.object({
@@ -113,7 +113,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Delete portfolio
-router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -131,7 +131,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Export portfolio as CSV
-router.get('/:id/export', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/:id/export', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 

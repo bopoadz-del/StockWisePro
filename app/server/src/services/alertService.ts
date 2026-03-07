@@ -38,7 +38,7 @@ export class AlertService {
 
       // Check each alert
       for (const alert of alerts) {
-        const currentPrice = priceMap.get(alert.ticker);
+        const currentPrice = priceMap.get(alert.ticker) as number | undefined;
         if (!currentPrice) continue;
 
         const shouldTrigger =

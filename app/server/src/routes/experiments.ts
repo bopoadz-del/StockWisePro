@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -6,7 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 // Get user's experiments
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const experiments = await prisma.experiment.findMany({
       where: { userId: req.user!.id },
@@ -20,7 +20,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Create experiment
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const schema = z.object({
       name: z.string().min(1),
@@ -48,7 +48,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Get single experiment
-router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -70,7 +70,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Update experiment
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const schema = z.object({
@@ -97,7 +97,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Delete experiment
-router.delete('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 

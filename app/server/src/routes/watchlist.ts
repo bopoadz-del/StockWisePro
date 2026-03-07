@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -6,7 +6,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 // Get user's watchlist
-router.get('/', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const watchlist = await prisma.watchlist.findMany({
       where: { userId: req.user!.id },
@@ -20,7 +20,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Add to watchlist
-router.post('/', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const schema = z.object({
       ticker: z.string().min(1),
@@ -44,7 +44,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Remove from watchlist
-router.delete('/:ticker', authenticate, async (req: AuthRequest, res, next) => {
+router.delete('/:ticker', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
 
@@ -64,7 +64,7 @@ router.delete('/:ticker', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // Check if stock is in watchlist
-router.get('/check/:ticker', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/check/:ticker', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
 
