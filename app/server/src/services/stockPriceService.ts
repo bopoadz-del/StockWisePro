@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import { prisma } from '../utils/prisma';
-import { alphaVantageService } from './alphaVantageService';
+import { alphaVantageService, type AVQuote } from './alphaVantageService';
 
 interface ClientSubscription {
   socketId: string;
@@ -8,14 +8,14 @@ interface ClientSubscription {
 }
 
 // Mock stock data for fallback
-const MOCK_STOCKS = [
-  { symbol: 'AAPL', name: 'Apple Inc.', price: 195.89, change: 2.45, changesPercentage: 1.27, volume: 54200000 },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 420.55, change: 5.32, changesPercentage: 1.28, volume: 22100000 },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 175.98, change: -1.23, changesPercentage: -0.69, volume: 18900000 },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.35, change: 3.12, changesPercentage: 1.78, volume: 38900000 },
-  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -8.75, changesPercentage: -3.40, volume: 98700000 },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 875.28, change: 15.42, changesPercentage: 1.79, volume: 45200000 },
-  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.68, change: 7.89, changesPercentage: 1.58, volume: 15200000 },
+const MOCK_STOCKS: AVQuote[] = [
+  { symbol: 'AAPL', name: 'Apple Inc.', price: 195.89, change: 2.45, changePercent: 1.27, volume: 54200000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 420.55, change: 5.32, changePercent: 1.28, volume: 22100000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 175.98, change: -1.23, changePercent: -0.69, volume: 18900000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.35, change: 3.12, changePercent: 1.78, volume: 38900000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -8.75, changePercent: -3.40, volume: 98700000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 875.28, change: 15.42, changePercent: 1.79, volume: 45200000, latestTradingDay: new Date().toISOString().split('T')[0] },
+  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.68, change: 7.89, changePercent: 1.58, volume: 15200000, latestTradingDay: new Date().toISOString().split('T')[0] },
 ];
 
 export class StockPriceService {
@@ -92,7 +92,7 @@ export class StockPriceService {
       const tickers = Array.from(this.allSubscribedTickers).slice(0, 5); // Limit to 5 for free tier
       
       // Fetch quotes from Alpha Vantage (rate limited)
-      const quotes = [];
+      const quotes: AVQuote[] = [];
       for (const ticker of tickers) {
         const quote = await alphaVantageService.getQuote(ticker);
         if (quote) {
@@ -112,7 +112,7 @@ export class StockPriceService {
 
       // Group updates by client
       this.subscriptions.forEach((subscription) => {
-        const clientUpdates = quotes.filter((q: any) =>
+        const clientUpdates = quotes.filter((q) =>
           subscription.tickers.has(q.symbol.toUpperCase().replace(/\./g, '-'))
         );
 
