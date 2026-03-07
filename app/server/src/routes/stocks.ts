@@ -6,7 +6,12 @@ import { prisma } from '../utils/prisma';
 
 const router = Router();
 
-// Cache for mock data fallback
+// Real-time stock data cache (in-memory)
+let cachedStockData: any[] = [];
+let lastCacheUpdate = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Mock stock data for fallback when API fails
 const MOCK_STOCKS = [
   { symbol: 'AAPL', name: 'Apple Inc.', price: 195.89, change: 2.45, changesPercentage: 1.27, marketCap: 3050000000000, pe: 30.2, volume: 54200000 },
   { symbol: 'MSFT', name: 'Microsoft Corporation', price: 420.55, change: 5.32, changesPercentage: 1.28, marketCap: 3120000000000, pe: 36.8, volume: 22100000 },
@@ -27,7 +32,7 @@ function formatTickerForDisplay(ticker: string): string {
   return ticker.replace(/-/g, '.');
 }
 
-// Search stocks
+// Search stocks - uses Alpha Vantage if available, else mock
 router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { q } = req.query;
@@ -58,7 +63,7 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-// Get stock quote
+// Get stock quote - uses Alpha Vantage if available, else mock
 router.get('/quote/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
@@ -66,7 +71,7 @@ router.get('/quote/:ticker', async (req, res, next) => {
     // Try Alpha Vantage first
     const quote = await alphaVantageService.getQuote(ticker);
     
-    if (quote) {
+    if (quote && quote.price > 0) {
       // Enrich with mock data for fields Alpha Vantage doesn't provide
       const mockData = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
       return res.json({
@@ -130,7 +135,7 @@ router.get('/quotes', async (req, res, next) => {
   }
 });
 
-// Get key metrics (simplified - return mock data since Alpha Vantage doesn't have this)
+// Get key metrics (mock - Alpha Vantage requires premium)
 router.get('/metrics/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
@@ -157,7 +162,7 @@ router.get('/metrics/:ticker', async (req, res, next) => {
   }
 });
 
-// Get historical prices
+// Get historical prices - uses Alpha Vantage if available
 router.get('/historical/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
@@ -196,12 +201,11 @@ router.get('/historical/:ticker', async (req, res, next) => {
   }
 });
 
-// Get income statement (mock - requires premium Alpha Vantage)
+// Get income statement (mock)
 router.get('/income/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
 
-    // Return mock data
     res.json([
       {
         date: '2024-09-30',
@@ -218,12 +222,11 @@ router.get('/income/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async
   }
 });
 
-// Get balance sheet (mock - requires premium Alpha Vantage)
+// Get balance sheet (mock)
 router.get('/balance/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { ticker } = req.params;
 
-    // Return mock data
     res.json([
       {
         date: '2024-09-30',
@@ -240,31 +243,9 @@ router.get('/balance/:ticker', authenticate, requirePlan(['PRO', 'ELITE']), asyn
   }
 });
 
-// Get market indices
+// Get market indices (mock with ETF proxies)
 router.get('/indices', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Try Alpha Vantage with ETF proxies
-    const indices = await alphaVantageService.getMarketIndices();
-    
-    if (indices.length > 0) {
-      // Map ETF proxies to index names
-      const indexMap: Record<string, { name: string; symbol: string }> = {
-        'SPY': { name: 'S&P 500', symbol: 'SPX' },
-        'QQQ': { name: 'NASDAQ', symbol: 'NDX' },
-        'DIA': { name: 'Dow Jones', symbol: 'DJI' },
-        'IWM': { name: 'Russell 2000', symbol: 'RUT' },
-      };
-
-      const mappedIndices = indices.map(q => ({
-        ...q,
-        symbol: indexMap[q.symbol]?.symbol || q.symbol,
-        name: indexMap[q.symbol]?.name || q.name,
-      }));
-
-      return res.json(mappedIndices);
-    }
-
-    // Fallback to mock indices
     res.json([
       { symbol: 'SPX', name: 'S&P 500', price: 5950.32, change: 42.15, changesPercentage: 0.71 },
       { symbol: 'NDX', name: 'NASDAQ', price: 20850.45, change: 185.32, changesPercentage: 0.90 },
@@ -288,10 +269,16 @@ router.get('/trending', async (req: Request, res: Response, next: NextFunction) 
   }
 });
 
-// Get all stocks for screener
+// Get all stocks for screener - uses cached data or mock
 router.get('/screener', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Try Alpha Vantage for a few stocks
+    // Check if cache is still valid
+    const now = Date.now();
+    if (now - lastCacheUpdate < CACHE_TTL && cachedStockData.length > 0) {
+      return res.json(cachedStockData);
+    }
+
+    // Try Alpha Vantage for a few stocks (respect rate limit)
     const quotes = await alphaVantageService.getScreenerStocks();
     
     if (quotes.length > 0) {
@@ -305,6 +292,11 @@ router.get('/screener', async (req: Request, res: Response, next: NextFunction) 
           pe: mockData?.pe || 20,
         };
       });
+      
+      // Update cache
+      cachedStockData = enrichedQuotes;
+      lastCacheUpdate = now;
+      
       return res.json(enrichedQuotes);
     }
 
