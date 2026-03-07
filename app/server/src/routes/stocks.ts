@@ -1,6 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import axios from 'axios';
-import { prisma } from '../utils/prisma';
 import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
 
 const router = Router();
@@ -31,27 +30,6 @@ router.get('/quote/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
 
-    // Try cache first
-    const cached = await prisma.cachedStock.findUnique({
-      where: { ticker: ticker.toUpperCase() },
-    });
-
-    // If cache is fresh (< 5 minutes), return it
-    if (cached && Date.now() - cached.lastUpdated.getTime() < 5 * 60 * 1000) {
-      return res.json({
-        symbol: cached.ticker,
-        name: cached.name,
-        price: cached.price,
-        change: cached.change,
-        changesPercentage: cached.changePercent,
-        marketCap: cached.marketCap,
-        pe: cached.peRatio,
-        volume: cached.volume,
-        cached: true,
-      });
-    }
-
-    // Fetch from API
     const response = await axios.get(
       `${FMP_BASE_URL}/quote/${ticker}?apikey=${FMP_API_KEY}`
     );
@@ -61,27 +39,6 @@ router.get('/quote/:ticker', async (req, res, next) => {
     if (!quote) {
       return res.status(404).json({ error: 'Stock not found' });
     }
-
-    // Update cache
-    await prisma.cachedStock.upsert({
-      where: { ticker: ticker.toUpperCase() },
-      update: {
-        price: quote.price,
-        change: quote.change,
-        changePercent: quote.changesPercentage,
-        lastUpdated: new Date(),
-      },
-      create: {
-        ticker: ticker.toUpperCase(),
-        name: quote.name,
-        price: quote.price,
-        change: quote.change,
-        changePercent: quote.changesPercentage,
-        marketCap: quote.marketCap,
-        peRatio: quote.pe,
-        volume: quote.volume,
-      },
-    });
 
     res.json(quote);
   } catch (error) {
@@ -199,15 +156,17 @@ router.get('/trending', async (req: Request, res: Response, next: NextFunction) 
   }
 });
 
-// Get all cached stocks (for screener)
+// Get all stocks for screener (using a predefined list of popular stocks)
 router.get('/screener', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const stocks = await prisma.cachedStock.findMany({
-      orderBy: { score: 'desc' },
-      take: 100,
-    });
+    // Use popular stocks for the screener
+    const popularStocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'BRK.B', 'JPM', 'V', 'WMT', 'JNJ', 'NFLX', 'DIS', 'UBER', 'PYPL', 'INTC', 'AMD', 'CRM', 'BAC', 'PFE', 'KO', 'PEP', 'MCD', 'NKE', 'XOM', 'CVX', 'UNH', 'ABBV', 'TMO', 'COST', 'AVGO', 'TXN', 'QCOM', 'HON', 'UNP', 'RTX', 'LMT', 'NEE', 'DUK', 'PLD', 'AMT', 'LIN', 'APD', 'FCX', 'T', 'VZ', 'CHTR', 'GM', 'F', 'STLA'];
+    
+    const response = await axios.get(
+      `${FMP_BASE_URL}/quote/${popularStocks.join(',')}?apikey=${FMP_API_KEY}`
+    );
 
-    res.json(stocks);
+    res.json(response.data);
   } catch (error) {
     next(error);
   }

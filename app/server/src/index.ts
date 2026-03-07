@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cron from 'node-cron';
 import helmet from 'helmet';
 import compression from 'compression';
 
@@ -17,9 +16,6 @@ import { portfolioRouter } from './routes/portfolio';
 import { experimentRouter } from './routes/experiments';
 import { userRouter } from './routes/user';
 import { errorHandler } from './middleware/errorHandler';
-import { StockPriceService } from './services/stockPriceService';
-import { AlertService, AlertWithUser } from './services/alertService';
-import { EmailService } from './services/emailService';
 
 const app = express();
 const httpServer = createServer(app);
@@ -124,11 +120,6 @@ app.get('/', (req, res) => {
 // Error handler (must be last)
 app.use(errorHandler);
 
-// Initialize services
-const stockPriceService = new StockPriceService(io);
-const alertService = new AlertService();
-const emailService = new EmailService();
-
 // WebSocket connection handling
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -136,19 +127,16 @@ io.on('connection', (socket) => {
   // Subscribe to stock price updates
   socket.on('subscribe:stocks', (tickers: string[]) => {
     console.log(`Client ${socket.id} subscribed to:`, tickers);
-    stockPriceService.subscribeClient(socket.id, tickers);
   });
 
   // Unsubscribe from stock price updates
   socket.on('unsubscribe:stocks', (tickers: string[]) => {
     console.log(`Client ${socket.id} unsubscribed from:`, tickers);
-    stockPriceService.unsubscribeClient(socket.id, tickers);
   });
 
   // Handle disconnect
   socket.on('disconnect', (reason) => {
     console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
-    stockPriceService.removeClient(socket.id);
   });
 
   // Ping-pong for connection health
@@ -156,47 +144,6 @@ io.on('connection', (socket) => {
     socket.emit('pong');
   });
 });
-
-// Start real-time price updates
-stockPriceService.startPriceUpdates();
-
-// Cron job: Check price alerts every minute
-cron.schedule(config.cron.alertCheckInterval, async () => {
-  console.log('Checking price alerts...');
-  try {
-    const triggeredAlerts = await alertService.checkAlerts();
-    
-    for (const alert of triggeredAlerts) {
-      // Send email notification
-      await emailService.sendPriceAlert(alert);
-      
-      // Notify via WebSocket if user is online
-      io.to(`user:${alert.userId}`).emit('alert:triggered', {
-        ticker: alert.ticker,
-        targetPrice: alert.targetPrice,
-        condition: alert.condition,
-      });
-      
-      console.log(`Alert triggered: ${alert.ticker} at $${alert.targetPrice}`);
-    }
-  } catch (error) {
-    console.error('Error checking alerts:', error);
-  }
-});
-
-// Cron job: Update cached stock prices every 5 minutes
-cron.schedule(config.cron.priceUpdateInterval, async () => {
-  console.log('Updating cached stock prices...');
-  try {
-    await stockPriceService.updateCachedPrices();
-    console.log('Cached prices updated successfully');
-  } catch (error) {
-    console.error('Error updating cached prices:', error);
-  }
-});
-
-// Initial cache update on startup
-stockPriceService.updateCachedPrices().catch(console.error);
 
 // Start server
 httpServer.listen(config.port, () => {
@@ -208,7 +155,6 @@ httpServer.listen(config.port, () => {
 ║   Environment: ${config.nodeEnv.padEnd(36)}║
 ║   Port: ${config.port.toString().padEnd(43)}║
 ║   Database: ${(config.databaseUrl ? 'Connected' : 'Not Configured').padEnd(36)}║
-║   Email: ${(config.smtp.enabled ? 'Enabled' : 'Disabled').padEnd(40)}║
 ║   WebSocket: Ready                                     ║
 ║                                                        ║
 ║   Health Check: http://localhost:${config.port}/health   ${' '.repeat(config.port.toString().length === 4 ? 1 : 0)}║
@@ -220,9 +166,6 @@ httpServer.listen(config.port, () => {
 // Graceful shutdown
 const shutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
-  
-  // Stop cron jobs
-  stockPriceService.stopPriceUpdates();
   
   // Close WebSocket connections
   io.close(() => {
