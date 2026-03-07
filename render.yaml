@@ -30,10 +30,8 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
-      - key: FMP_API_KEY
-        value: W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
-      - key: FMP_BASE_URL
-        value: https://financialmodelingprep.com/api/v3
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false  # Set this in Render dashboard: https://www.alphavantage.co/support/#api-key
       - key: CLIENT_URL
         value: https://stockwise-pro-web.onrender.com
       - key: SMTP_HOST
