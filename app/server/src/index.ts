@@ -84,6 +84,7 @@ if (config.nodeEnv === 'development') {
 // Health check endpoint (must be before routes for Render)
 app.get('/health', async (req, res) => {
   const dbHealthy = await checkDatabaseConnection();
+  const avKeySet = !!process.env.ALPHA_VANTAGE_API_KEY;
   
   res.status(dbHealthy ? 200 : 503).json({
     status: dbHealthy ? 'healthy' : 'unhealthy',
@@ -92,9 +93,47 @@ app.get('/health', async (req, res) => {
     services: {
       database: dbHealthy ? 'connected' : 'disconnected',
       websocket: 'ready',
+      alphaVantage: avKeySet ? 'configured' : 'not_configured',
     },
     version: process.env.npm_package_version || '1.0.0',
   });
+});
+
+// Test Alpha Vantage API connection
+app.get('/api/test/alphavantage', async (req, res) => {
+  try {
+    const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ 
+        error: 'ALPHA_VANTAGE_API_KEY not set',
+        env: process.env.NODE_ENV,
+        keys: Object.keys(process.env).filter(k => k.includes('ALPHA') || k.includes('API'))
+      });
+    }
+    
+    // Test call to Alpha Vantage
+    const axios = require('axios');
+    const response = await axios.get('https://www.alphavantage.co/query', {
+      params: {
+        function: 'GLOBAL_QUOTE',
+        symbol: 'AAPL',
+        apikey: apiKey,
+      },
+      timeout: 10000,
+    });
+    
+    res.json({
+      keyConfigured: true,
+      keyPrefix: apiKey.substring(0, 4) + '...',
+      apiResponse: response.data,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Alpha Vantage API test failed',
+      message: error.message,
+      response: error.response?.data,
+    });
+  }
 });
 
 // API Routes
