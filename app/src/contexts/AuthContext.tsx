@@ -13,14 +13,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo user for when backend is unavailable
-const DEMO_USER: User = {
-  id: 'demo-user-123',
-  email: 'demo@stockwise.pro',
-  name: 'Demo User',
-  plan: 'ELITE',
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useLocalStorage<string | null>('auth-token', null);
@@ -28,12 +20,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Check for existing session on mount
   useEffect(() => {
-    if (token) {
-      // Check if it's a demo token
-      if (token === 'demo-token') {
-        setUser(DEMO_USER);
-      }
-    }
+    // Token is stored in localStorage via useLocalStorage hook
+    // Future: validate token with backend
     setIsLoading(false);
   }, [token]);
 
@@ -43,12 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authApi.login({ email, password });
       
       if (response.error) {
-        // If API fails, enable demo mode
-        console.log('API login failed, switching to demo mode');
-        setUser(DEMO_USER);
-        setToken('demo-token');
-
-        return { success: true };
+        return { success: false, error: response.error };
       }
 
       if (response.data) {
@@ -59,11 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { success: false, error: 'Login failed' };
     } catch (error) {
-      // Network error - enable demo mode
-      console.log('Network error, switching to demo mode');
-      setUser(DEMO_USER);
-      setToken('demo-token');
-      return { success: true };
+      return { success: false, error: 'Network error. Please try again.' };
     } finally {
       setIsLoading(false);
     }
@@ -75,12 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authApi.register({ email, password, name });
       
       if (response.error) {
-        // If API fails, enable demo mode
-        console.log('API register failed, switching to demo mode');
-        setUser({ ...DEMO_USER, email: email || DEMO_USER.email, name: name || DEMO_USER.name });
-        setToken('demo-token');
-
-        return { success: true };
+        return { success: false, error: response.error };
       }
 
       if (response.data) {
@@ -91,11 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { success: false, error: 'Registration failed' };
     } catch (error) {
-      // Network error - enable demo mode
-      console.log('Network error, switching to demo mode');
-      setUser({ ...DEMO_USER, email: email || DEMO_USER.email, name: name || DEMO_USER.name });
-      setToken('demo-token');
-      return { success: true };
+      return { success: false, error: 'Network error. Please try again.' };
     } finally {
       setIsLoading(false);
     }

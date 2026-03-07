@@ -19,7 +19,6 @@ import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { SparklineChart } from '@/components/SparklineChart';
 import { stocksApi, type StockQuote } from '@/lib/api/stocks';
-import { mockStocks } from '@/lib/data';
 
 // Format ticker for display (BRK-B -> BRK.B)
 function formatTickerForDisplay(ticker: string): string {
@@ -159,33 +158,14 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         }));
         setStocks(formattedStocks);
       } else {
-        // Fallback to mock data
-        loadMockStocks();
+        setStocks([]);
       }
     } catch (error) {
-      console.log('API unavailable, using mock data');
-      loadMockStocks();
+      console.error('Failed to load stocks:', error);
+      setStocks([]);
     } finally {
       setInitialLoading(false);
     }
-  };
-
-  const loadMockStocks = () => {
-    const formattedStocks: StockResult[] = mockStocks.map((stock) => ({
-      ticker: stock.ticker,
-      name: stock.name,
-      price: stock.price,
-      change: stock.change,
-      changePercent: stock.changePercent,
-      marketCap: stock.marketCap || 0,
-      score: stock.score,
-      signal: stock.signal,
-      sector: stock.sector,
-      volume: stock.volume,
-      pe: stock.peRatio,
-      sparklineData: stock.sparklineData,
-    }));
-    setStocks(formattedStocks);
   };
 
   const performSearch = async (query: string) => {
@@ -214,43 +194,17 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
           }));
           setStocks(formattedStocks);
         } else {
-          // Fallback to mock data search
-          searchMockStocks(query);
+          setStocks([]);
         }
       } else {
-        // Fallback to mock data search
-        searchMockStocks(query);
+        setStocks([]);
       }
     } catch (error) {
-      console.log('Search API unavailable, using mock data');
-      searchMockStocks(query);
+      console.error('Search failed:', error);
+      setStocks([]);
     } finally {
       setIsSearching(false);
     }
-  };
-
-  const searchMockStocks = (query: string) => {
-    const lowerQuery = query.toLowerCase();
-    const filtered = mockStocks.filter(
-      stock => 
-        stock.ticker.toLowerCase().includes(lowerQuery) ||
-        stock.name.toLowerCase().includes(lowerQuery)
-    );
-    const formattedStocks: StockResult[] = filtered.map((stock) => ({
-      ticker: stock.ticker,
-      name: stock.name,
-      price: stock.price,
-      change: stock.change,
-      changePercent: stock.changePercent,
-      marketCap: stock.marketCap || 0,
-      score: stock.score,
-      signal: stock.signal,
-      sector: stock.sector,
-      volume: stock.volume,
-      pe: stock.peRatio,
-      sparklineData: stock.sparklineData,
-    }));
-    setStocks(formattedStocks);
   };
 
   // Filter and sort stocks
