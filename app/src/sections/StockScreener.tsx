@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp, X, Loader2 } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { SparklineChart } from '@/components/SparklineChart';
-import { toast } from 'sonner';
+
 
 type SortField = 'ticker' | 'price' | 'change' | 'score' | 'marketCap';
 type SortDirection = 'asc' | 'desc';
