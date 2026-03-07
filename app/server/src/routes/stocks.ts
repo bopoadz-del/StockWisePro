@@ -85,13 +85,41 @@ router.get('/quote/:ticker', async (req, res, next) => {
     // Fallback to mock data
     const mockStock = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
     if (mockStock) {
-      return res.json(mockStock);
+      return res.json({...mockStock, _source: 'mock'});
     }
 
     res.status(404).json({ error: 'Stock not found' });
   } catch (error: any) {
     console.error(`Quote error for ${req.params.ticker}:`, error.message);
     res.status(500).json({ error: 'Failed to fetch stock data' });
+  }
+});
+
+// Debug endpoint to check Alpha Vantage directly
+router.get('/debug/quote/:ticker', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const axios = require('axios');
+    
+    const response = await axios.get('https://www.alphavantage.co/query', {
+      params: {
+        function: 'GLOBAL_QUOTE',
+        symbol: ticker,
+        apikey: process.env.ALPHA_VANTAGE_API_KEY,
+      },
+      timeout: 10000,
+    });
+    
+    res.json({
+      keyConfigured: !!process.env.ALPHA_VANTAGE_API_KEY,
+      keyPrefix: process.env.ALPHA_VANTAGE_API_KEY?.substring(0, 4),
+      apiResponse: response.data,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: error.message,
+      response: error.response?.data,
+    });
   }
 });
 
