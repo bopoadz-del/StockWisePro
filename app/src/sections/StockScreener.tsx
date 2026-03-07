@@ -19,6 +19,11 @@ import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { SparklineChart } from '@/components/SparklineChart';
 import { stocksApi, type StockQuote } from '@/lib/api/stocks';
+
+// Format ticker for display (BRK-B -> BRK.B)
+function formatTickerForDisplay(ticker: string): string {
+  return ticker.replace(/-/g, '.');
+}
 import { toast } from 'sonner';
 
 type SortField = 'ticker' | 'price' | 'change' | 'score' | 'marketCap';
@@ -44,8 +49,7 @@ interface StockScreenerProps {
   isAuthenticated?: boolean;
 }
 
-// Default popular stocks to show initially
-const DEFAULT_STOCKS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'BRK.B', 'JPM', 'V', 'WMT', 'JNJ'];
+
 
 // Calculate score based on available metrics
 function calculateScore(stock: StockQuote): number {
@@ -116,9 +120,9 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Load default stocks on mount
+  // Load screener stocks on mount
   useEffect(() => {
-    loadDefaultStocks();
+    loadScreenerStocks();
   }, []);
 
   // Debounced search
@@ -127,20 +131,20 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       if (searchQuery.trim()) {
         performSearch(searchQuery.trim());
       } else {
-        loadDefaultStocks();
+        loadScreenerStocks();
       }
     }, 300);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const loadDefaultStocks = async () => {
+  const loadScreenerStocks = async () => {
     setInitialLoading(true);
     try {
-      const response = await stocksApi.getBatchQuotes(DEFAULT_STOCKS);
-      if (response.data) {
+      const response = await stocksApi.getScreener();
+      if (response.data && Array.isArray(response.data)) {
         const formattedStocks: StockResult[] = response.data.map((quote) => ({
-          ticker: quote.symbol,
+          ticker: formatTickerForDisplay(quote.symbol),
           name: quote.name,
           price: quote.price,
           change: quote.change,
@@ -153,10 +157,14 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
           sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
         }));
         setStocks(formattedStocks);
+      } else {
+        setStocks([]);
+        toast.error('Invalid response from server');
       }
     } catch (error) {
-      console.error('Failed to load default stocks:', error);
+      console.error('Failed to load stocks:', error);
       toast.error('Failed to load stocks. Please try again.');
+      setStocks([]);
     } finally {
       setInitialLoading(false);
     }
@@ -168,13 +176,13 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       // First, search for matching symbols
       const searchResponse = await stocksApi.search(query);
       if (searchResponse.data && searchResponse.data.length > 0) {
-        // Fetch quotes for the matching stocks
-        const symbols = searchResponse.data.slice(0, 10).map(r => r.symbol);
+        // Fetch quotes for the matching stocks (max 5 at a time to avoid API limits)
+        const symbols = searchResponse.data.slice(0, 5).map(r => r.symbol);
         const quotesResponse = await stocksApi.getBatchQuotes(symbols);
         
-        if (quotesResponse.data) {
+        if (quotesResponse.data && Array.isArray(quotesResponse.data)) {
           const formattedStocks: StockResult[] = quotesResponse.data.map((quote) => ({
-            ticker: quote.symbol,
+            ticker: formatTickerForDisplay(quote.symbol),
             name: quote.name,
             price: quote.price,
             change: quote.change,
@@ -187,6 +195,8 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
             sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
           }));
           setStocks(formattedStocks);
+        } else {
+          setStocks([]);
         }
       } else {
         setStocks([]);
@@ -194,6 +204,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     } catch (error) {
       console.error('Search failed:', error);
       toast.error('Search failed. Please try again.');
+      setStocks([]);
     } finally {
       setIsSearching(false);
     }
@@ -248,7 +259,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const handleClearSearch = () => {
     setSearchQuery('');
     setSelectedSector(null);
-    loadDefaultStocks();
+    loadScreenerStocks();
   };
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
