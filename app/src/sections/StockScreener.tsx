@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, ArrowUpDown, ChevronDown, ChevronUp, X, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,10 +18,24 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { SparklineChart } from '@/components/SparklineChart';
-// Types are handled implicitly through the mockStocks data
+import { stocksApi } from '@/lib/api/stocks';
+import { toast } from 'sonner';
 
 type SortField = 'ticker' | 'price' | 'change' | 'score' | 'marketCap';
 type SortDirection = 'asc' | 'desc';
+
+interface StockResult {
+  ticker: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  marketCap: number;
+  score: number;
+  signal: 'buy' | 'hold' | 'sell';
+  sector?: string;
+  sparklineData?: number[];
+}
 
 interface StockScreenerProps {
   onSelectStock: (ticker: string) => void;
@@ -34,22 +48,91 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const [sortField, setSortField] = useState<SortField>('score');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showFilters, setShowFilters] = useState(false);
+  const [searchResults, setSearchResults] = useState<StockResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const filteredStocks = useMemo(() => {
-    let result = [...mockStocks];
-
-    // Search filter
-    const query = searchQuery.trim().toLowerCase();
-    if (query) {
-      result = result.filter(
-        (stock) =>
-          stock.ticker.toLowerCase().includes(query) ||
-          stock.name.toLowerCase().includes(query)
-      );
+  // Search API call with debounce
+  const searchStocks = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setHasSearched(false);
+      return;
     }
 
-    // Sector filter
-    if (selectedSector) {
+    setIsSearching(true);
+    setHasSearched(true);
+
+    try {
+      const response = await stocksApi.search(query);
+      
+      if (response.error) {
+        toast.error(response.error);
+        setSearchResults([]);
+        return;
+      }
+
+      // Transform API response to StockResult format
+      const results: StockResult[] = (response.data || []).map((item: any) => ({
+        ticker: item.symbol,
+        name: item.name,
+        price: 0, // Will be fetched separately or use cached data
+        change: 0,
+        changePercent: 0,
+        marketCap: 0,
+        score: 0,
+        signal: 'hold' as const,
+        sector: item.sector || 'Unknown',
+      }));
+
+      // For demo: merge with mock data if available, otherwise use the search results
+      const enrichedResults = results.map(result => {
+        const mockStock = mockStocks.find(s => s.ticker === result.ticker);
+        if (mockStock) {
+          return { ...result, ...mockStock };
+        }
+        return result;
+      });
+
+      setSearchResults(enrichedResults);
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error('Failed to search stocks');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery.trim()) {
+        searchStocks(searchQuery);
+      } else {
+        setSearchResults([]);
+        setHasSearched(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchStocks]);
+
+  // Determine which stocks to display
+  const displayStocks = useMemo(() => {
+    // If user has searched, show search results
+    if (hasSearched) {
+      return searchResults;
+    }
+    // Otherwise show mock stocks with filters applied
+    return mockStocks;
+  }, [hasSearched, searchResults]);
+
+  const filteredStocks = useMemo(() => {
+    let result = [...displayStocks];
+
+    // Sector filter (only applies to mock stocks for now)
+    if (selectedSector && !hasSearched) {
       result = result.filter((stock) => stock.sector === selectedSector);
     }
 
@@ -77,7 +160,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     });
 
     return result;
-  }, [searchQuery, selectedSector, sortField, sortDirection]);
+  }, [displayStocks, selectedSector, sortField, sortDirection, hasSearched]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -86,6 +169,12 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       setSortField(field);
       setSortDirection('desc');
     }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setHasSearched(false);
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -106,8 +195,8 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
               Stock <span className="text-gradient-gold">Screener</span>
             </h2>
             <p className="text-white/60 max-w-2xl mx-auto">
-              Discover top-rated stocks with our advanced screening tools. Filter by sector,
-              valuation, and our proprietary AI score.
+              Search all US stocks in real-time. Find any ticker on the American market 
+              with our comprehensive search powered by live market data.
             </p>
           </div>
         </ScrollReveal>
@@ -118,18 +207,21 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
               <Input
-                placeholder="Search by ticker or company name..."
+                placeholder="Search any US stock (e.g., AAPL, Tesla, Microsoft)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-12 pr-10 h-12 bg-[#141414] border-white/10 text-white placeholder:text-white/40 focus:border-gold focus:ring-gold/20"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={handleClearSearch}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60 transition-colors"
                 >
                   <X size={18} />
                 </button>
+              )}
+              {isSearching && (
+                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 text-gold animate-spin" size={18} />
               )}
             </div>
             <Button
@@ -150,8 +242,32 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
           </div>
         </ScrollReveal>
 
+        {/* Search Results Info */}
+        <AnimatePresence>
+          {hasSearched && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4"
+            >
+              <div className="flex items-center justify-between bg-[#141414] rounded-lg px-4 py-3 border border-white/10">
+                <span className="text-white/70">
+                  Found <span className="text-gold font-semibold">{searchResults.length}</span> results for &quot;{searchQuery}&quot;
+                </span>
+                <button
+                  onClick={handleClearSearch}
+                  className="text-sm text-white/50 hover:text-white transition-colors"
+                >
+                  Clear search
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Filter Panel */}
-        {showFilters && (
+        {showFilters && !hasSearched && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -256,37 +372,55 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className="font-mono text-white">{formatCurrency(stock.price)}</span>
+                        <span className="font-mono text-white">
+                          {stock.price > 0 ? formatCurrency(stock.price) : '-'}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div
-                          className={`font-mono ${
-                            stock.change >= 0 ? 'text-green-500' : 'text-red-500'
-                          }`}
-                        >
-                          <div>{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}</div>
-                          <div className="text-sm">{formatPercentage(stock.changePercent)}</div>
-                        </div>
+                        {stock.price > 0 ? (
+                          <div
+                            className={`font-mono ${
+                              stock.change >= 0 ? 'text-green-500' : 'text-red-500'
+                            }`}
+                          >
+                            <div>{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}</div>
+                            <div className="text-sm">{formatPercentage(stock.changePercent)}</div>
+                          </div>
+                        ) : (
+                          <span className="text-white/30">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <div className="w-24">
-                          <SparklineChart
-                            data={stock.sparklineData}
-                            isPositive={stock.change >= 0}
-                            height={30}
-                          />
-                        </div>
+                        {stock.sparklineData ? (
+                          <div className="w-24">
+                            <SparklineChart
+                              data={stock.sparklineData}
+                              isPositive={stock.change >= 0}
+                              height={30}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-white/30">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <ScoreVisualizer score={stock.score} size="sm" showLabel={false} />
-                          <span className={`font-bold ${getScoreColor(stock.score)}`}>
-                            {stock.score}
-                          </span>
-                        </div>
+                        {stock.score > 0 ? (
+                          <div className="flex items-center justify-end gap-3">
+                            <ScoreVisualizer score={stock.score} size="sm" showLabel={false} />
+                            <span className={`font-bold ${getScoreColor(stock.score)}`}>
+                              {stock.score}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-white/30">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <SignalBadge signal={stock.signal} size="sm" />
+                        {stock.score > 0 ? (
+                          <SignalBadge signal={stock.signal} size="sm" />
+                        ) : (
+                          <span className="text-white/30">-</span>
+                        )}
                       </TableCell>
                     </motion.tr>
                   ))}
@@ -296,17 +430,31 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
 
             {filteredStocks.length === 0 && (
               <div className="py-12 text-center">
-                <p className="text-white/50">No stocks match your criteria</p>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedSector(null);
-                  }}
-                  className="mt-4 text-gold hover:text-gold-light"
-                >
-                  Clear Filters
-                </Button>
+                {isSearching ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="text-gold animate-spin" size={32} />
+                    <p className="text-white/50">Searching stocks...</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-white/50">
+                      {hasSearched 
+                        ? `No stocks found matching "${searchQuery}"`
+                        : 'No stocks match your criteria'}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedSector(null);
+                        setHasSearched(false);
+                      }}
+                      className="mt-4 text-gold hover:text-gold-light"
+                    >
+                      Clear Filters
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
