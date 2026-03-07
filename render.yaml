@@ -9,23 +9,6 @@
 # 5. Render will automatically create all services defined below
 
 services:
-  # PostgreSQL Database
-  - type: pserv
-    name: stockwise-pro-db
-    runtime: docker
-    plan: starter
-    envVars:
-      - key: POSTGRES_USER
-        generateValue: true
-      - key: POSTGRES_PASSWORD
-        generateValue: true
-      - key: POSTGRES_DB
-        value: stockwise_pro
-    disk:
-      name: postgres-data
-      mountPath: /var/lib/postgresql/data
-      sizeGB: 10
-
   # Backend API Server
   - type: web
     name: stockwise-pro-api
@@ -81,6 +64,13 @@ services:
       - key: VITE_FMP_API_KEY
         value: W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
     autoDeploy: true
+
+databases:
+  # PostgreSQL Database (Native Render PostgreSQL)
+  - name: stockwise-pro-db
+    plan: free
+    databaseName: stockwise_pro
+    user: stockwise_pro_user
 
 # Environment Groups (for shared secrets)
 envVarGroups:
