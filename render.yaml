@@ -31,7 +31,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: ALPHA_VANTAGE_API_KEY
-        sync: false  # Set this in Render dashboard: https://www.alphavantage.co/support/#api-key
+        value: ZQP2TMEJKN2PKLUG
       - key: CLIENT_URL
         value: https://stockwise-pro-web.onrender.com
       - key: SMTP_HOST
@@ -59,8 +59,6 @@ services:
         value: https://stockwise-pro-api.onrender.com/api
       - key: VITE_WS_URL
         value: wss://stockwise-pro-api.onrender.com
-      - key: VITE_FMP_API_KEY
-        value: W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ
     autoDeploy: true
 
 databases:
