@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Play, Users, TrendingUp, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
+import { DemoModal } from '@/components/DemoModal';
 
 const stats = [
   { icon: Users, value: 50000, suffix: '+', label: 'Active Investors' },
@@ -14,6 +16,7 @@ interface HeroProps {
 }
 
 export function Hero({ onCtaClick }: HeroProps) {
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
   return (
     <section className="relative min-h-screen bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-[#141414] pt-[120px] pb-20 overflow-hidden">
       {/* Background Effects */}
@@ -74,6 +77,7 @@ export function Hero({ onCtaClick }: HeroProps) {
               <Button
                 size="lg"
                 variant="outline"
+                onClick={() => setIsDemoOpen(true)}
                 className="border-white/20 text-white hover:bg-white/10 px-8 h-14 text-base"
               >
                 <Play className="mr-2 w-5 h-5" />
@@ -196,6 +200,9 @@ export function Hero({ onCtaClick }: HeroProps) {
           </motion.div>
         </div>
       </div>
+
+      {/* Demo Modal */}
+      <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
     </section>
   );
 }
