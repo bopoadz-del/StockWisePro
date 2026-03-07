@@ -15,7 +15,7 @@ import { LiveTicker } from './components/LiveTicker';
 import { StockDetailDrawer } from './components/StockDetailDrawer';
 import { Watchlist } from './components/Watchlist';
 import { StockComparison } from './components/StockComparison';
-import { ExperimentWorkspace } from './components/ExperimentWorkspace';
+
 import { AuthModal } from './components/AuthModal';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { Button } from './components/ui/button';
@@ -122,22 +122,6 @@ function App() {
           isAuthenticated={isAuthenticated}
         />
         
-        {/* Experiment Workspace */}
-        <section className="py-20 bg-[#141414]">
-          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                Formula <span className="text-gradient-gold">Lab</span>
-              </h2>
-              <p className="text-white/60 max-w-2xl mx-auto">
-                Experiment with custom scoring algorithms in real-time. Test different weights, 
-                metrics, and formulas to create your perfect investment strategy.
-              </p>
-            </div>
-            <ExperimentWorkspace />
-          </div>
-        </section>
-
         <ScoringSystem />
         <InvestorPortfolios isAuthenticated={isAuthenticated} />
         <Pricing />
