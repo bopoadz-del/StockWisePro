@@ -12,8 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { sectors } from '@/lib/data';
+import { sectors, mockStocks } from '@/lib/data';
 import { formatCurrency, formatPercentage, getScoreColor } from '@/lib/utils';
+import { toast } from 'sonner';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
@@ -119,6 +120,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const [stocks, setStocks] = useState<StockResult[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [usingDemoData, setUsingDemoData] = useState(false);
 
   // Load screener stocks on mount
   useEffect(() => {
@@ -140,9 +142,10 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
 
   const loadScreenerStocks = async () => {
     setInitialLoading(true);
+    setUsingDemoData(false);
     try {
       const response = await stocksApi.getScreener();
-      if (response.data && Array.isArray(response.data)) {
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         const formattedStocks: StockResult[] = response.data.map((quote) => ({
           ticker: formatTickerForDisplay(quote.symbol),
           name: quote.name,
@@ -158,18 +161,40 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         }));
         setStocks(formattedStocks);
       } else {
-        setStocks([]);
+        // API returned empty - use mock data
+        loadMockStocks();
       }
     } catch (error) {
-      console.error('Failed to load stocks:', error);
-      setStocks([]);
+      console.log('API error, using demo data');
+      loadMockStocks();
     } finally {
       setInitialLoading(false);
     }
   };
 
+  const loadMockStocks = () => {
+    setUsingDemoData(true);
+    toast.info('Using demo data - API temporarily unavailable');
+    const formattedStocks: StockResult[] = mockStocks.map((stock) => ({
+      ticker: stock.ticker,
+      name: stock.name,
+      price: stock.price,
+      change: stock.change,
+      changePercent: stock.changePercent,
+      marketCap: stock.marketCap || 0,
+      score: stock.score,
+      signal: stock.signal,
+      sector: stock.sector,
+      volume: stock.volume,
+      pe: stock.peRatio,
+      sparklineData: stock.sparklineData,
+    }));
+    setStocks(formattedStocks);
+  };
+
   const performSearch = async (query: string) => {
     setIsSearching(true);
+    setUsingDemoData(false);
     try {
       // First, search for matching symbols
       const searchResponse = await stocksApi.search(query);
@@ -178,7 +203,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         const symbols = searchResponse.data.slice(0, 5).map(r => r.symbol);
         const quotesResponse = await stocksApi.getBatchQuotes(symbols);
         
-        if (quotesResponse.data && Array.isArray(quotesResponse.data)) {
+        if (quotesResponse.data && Array.isArray(quotesResponse.data) && quotesResponse.data.length > 0) {
           const formattedStocks: StockResult[] = quotesResponse.data.map((quote) => ({
             ticker: formatTickerForDisplay(quote.symbol),
             name: quote.name,
@@ -194,17 +219,44 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
           }));
           setStocks(formattedStocks);
         } else {
-          setStocks([]);
+          // API returned empty - use mock search
+          searchMockStocks(query);
         }
       } else {
-        setStocks([]);
+        // API returned empty - use mock search
+        searchMockStocks(query);
       }
     } catch (error) {
-      console.error('Search failed:', error);
-      setStocks([]);
+      console.log('Search API error, using demo data');
+      searchMockStocks(query);
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const searchMockStocks = (query: string) => {
+    setUsingDemoData(true);
+    const lowerQuery = query.toLowerCase();
+    const filtered = mockStocks.filter(
+      stock => 
+        stock.ticker.toLowerCase().includes(lowerQuery) ||
+        stock.name.toLowerCase().includes(lowerQuery)
+    );
+    const formattedStocks: StockResult[] = filtered.map((stock) => ({
+      ticker: stock.ticker,
+      name: stock.name,
+      price: stock.price,
+      change: stock.change,
+      changePercent: stock.changePercent,
+      marketCap: stock.marketCap || 0,
+      score: stock.score,
+      signal: stock.signal,
+      sector: stock.sector,
+      volume: stock.volume,
+      pe: stock.peRatio,
+      sparklineData: stock.sparklineData,
+    }));
+    setStocks(formattedStocks);
   };
 
   // Filter and sort stocks
@@ -286,6 +338,18 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
             </p>
           </div>
         </ScrollReveal>
+
+        {/* Demo Data Banner */}
+        {usingDemoData && (
+          <ScrollReveal delay={0.05}>
+            <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-amber-400 text-sm font-medium">
+                Demo Mode: Showing sample stock data. Real-time data temporarily unavailable.
+              </span>
+            </div>
+          </ScrollReveal>
+        )}
 
         {/* Search and Filters */}
         <ScrollReveal delay={0.1}>

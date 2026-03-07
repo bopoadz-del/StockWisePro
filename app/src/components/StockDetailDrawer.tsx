@@ -21,6 +21,7 @@ import {
   type FMPKeyMetrics,
 } from '@/lib/fmpApi';
 import { formatCurrency, formatPercentage, formatVolume, getScoreColor } from '@/lib/utils';
+import { mockStocks } from '@/lib/data';
 import { SignalBadge } from './SignalBadge';
 import { ScoreVisualizer } from './ScoreVisualizer';
 import {
@@ -51,6 +52,7 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
   const [metrics, setMetrics] = useState<FMPKeyMetrics | null>(null);
   const [historicalData, setHistoricalData] = useState<{ date: string; price: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [usingDemoData, setUsingDemoData] = useState(false);
   const [watchlist, setWatchlist] = useLocalStorage<string[]>('watchlist', []);
   const [alerts, setAlerts] = useLocalStorage<AlertPrice[]>('price-alerts', []);
   const [alertPrice, setAlertPrice] = useState('');
@@ -67,6 +69,7 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
 
   const loadStockData = async () => {
     setLoading(true);
+    setUsingDemoData(false);
     try {
       // Fetch all data in parallel
       const [quoteData, metricsData] = await Promise.all([
@@ -74,25 +77,108 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
         fetchKeyMetrics(ticker),
       ]);
 
-      setQuote(quoteData);
-      setMetrics(metricsData);
+      if (quoteData) {
+        setQuote(quoteData);
+        setMetrics(metricsData);
 
-      // Fetch historical prices for chart
-      const to = new Date().toISOString().split('T')[0];
-      const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const historical = await fetchHistoricalPrices(ticker, from, to);
-      
-      setHistoricalData(
-        historical.reverse().map((h) => ({
-          date: h.date,
-          price: h.close,
-        }))
-      );
+        // Fetch historical prices for chart
+        const to = new Date().toISOString().split('T')[0];
+        const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const historical = await fetchHistoricalPrices(ticker, from, to);
+        
+        if (historical.length > 0) {
+          setHistoricalData(
+            historical.reverse().map((h) => ({
+              date: h.date,
+              price: h.close,
+            }))
+          );
+        } else {
+          // Generate mock historical data
+          generateMockHistoricalData(quoteData.price, quoteData.change);
+        }
+      } else {
+        // Fallback to mock data
+        loadMockStockData();
+      }
     } catch (error) {
-      console.error('Error loading stock data:', error);
+      console.log('API error, using mock data for', ticker);
+      loadMockStockData();
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMockStockData = () => {
+    setUsingDemoData(true);
+    const mockStock = mockStocks.find(s => s.ticker === ticker);
+    if (mockStock) {
+      setQuote({
+        symbol: mockStock.ticker,
+        name: mockStock.name,
+        price: mockStock.price,
+        changesPercentage: mockStock.changePercent,
+        change: mockStock.change,
+        dayLow: mockStock.price * 0.98,
+        dayHigh: mockStock.price * 1.02,
+        yearHigh: mockStock.fiftyTwoWeekHigh || mockStock.price * 1.2,
+        yearLow: mockStock.fiftyTwoWeekLow || mockStock.price * 0.8,
+        marketCap: mockStock.marketCap || 0,
+        priceAvg50: mockStock.price * 0.95,
+        priceAvg200: mockStock.price * 0.90,
+        volume: mockStock.volume || 1000000,
+        avgVolume: mockStock.avgVolume || 1000000,
+        exchange: 'NASDAQ',
+        open: mockStock.price * 0.99,
+        previousClose: mockStock.price - mockStock.change,
+        eps: 5.0,
+        pe: mockStock.peRatio || 20,
+        earningsAnnouncement: '',
+        sharesOutstanding: 1000000000,
+        timestamp: Date.now(),
+      });
+      setMetrics({
+        symbol: mockStock.ticker,
+        date: new Date().toISOString().split('T')[0],
+        peRatio: mockStock.peRatio || 20,
+        priceToBookRatio: mockStock.pbRatio || 3,
+        priceToSalesRatio: mockStock.psRatio || 5,
+        roe: 0.15,
+        roa: 0.08,
+        debtToEquity: 0.5,
+        currentRatio: 2.0,
+        quickRatio: 1.5,
+        dividendYield: mockStock.dividendYield || 0,
+        payoutRatio: 0.3,
+      });
+      if (mockStock.sparklineData) {
+        setHistoricalData(
+          mockStock.sparklineData.map((price, i) => ({
+            date: new Date(Date.now() - (mockStock.sparklineData!.length - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            price,
+          }))
+        );
+      } else {
+        generateMockHistoricalData(mockStock.price, mockStock.change);
+      }
+    }
+  };
+
+  const generateMockHistoricalData = (basePrice: number, change: number) => {
+    const data: { date: string; price: number }[] = [];
+    const days = 90;
+    const changePerDay = change / days;
+    
+    for (let i = days; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const randomVariation = (Math.random() - 0.5) * basePrice * 0.02;
+      const price = basePrice - (changePerDay * i) + randomVariation;
+      data.push({
+        date: date.toISOString().split('T')[0],
+        price: Math.max(0.01, price),
+      });
+    }
+    setHistoricalData(data);
   };
 
   const toggleWatchlist = () => {
@@ -160,6 +246,16 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             className="fixed right-0 top-0 h-full w-full max-w-2xl bg-[#0a0a0a] border-l border-white/10 z-50 overflow-hidden flex flex-col"
           >
+            {/* Demo Data Banner */}
+            {usingDemoData && (
+              <div className="p-3 bg-amber-500/10 border-b border-amber-500/30 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-amber-400 text-sm font-medium">
+                  Demo Mode: Showing sample data. Real-time data temporarily unavailable.
+                </span>
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-white/10">
               <div className="flex items-center gap-4">
