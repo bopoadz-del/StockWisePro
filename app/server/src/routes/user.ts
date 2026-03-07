@@ -1,10 +1,14 @@
 import { Router, Response, NextFunction } from 'express';
+import { requireDatabase } from '../middleware/dbHealth';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
+
+// Apply database health check
+router.use(requireDatabase);
 
 // Get current user profile
 router.get('/profile', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {

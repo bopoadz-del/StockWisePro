@@ -1,9 +1,13 @@
 import { Router, Response, NextFunction } from 'express';
+import { requireDatabase } from '../middleware/dbHealth';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../config/database';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
+
+// Apply database health check
+router.use(requireDatabase);
 
 // Get user's experiments
 router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {

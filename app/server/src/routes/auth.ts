@@ -1,10 +1,14 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../config/database';
 import { generateToken } from '../middleware/auth';
+import { requireDatabase } from '../middleware/dbHealth';
 
 const router = Router();
+
+// Apply database health check to all auth routes
+router.use(requireDatabase);
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
