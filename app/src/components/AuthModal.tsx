@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { X, Mail, Lock, User, Eye, EyeOff, Loader2, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,10 +17,51 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { login, register } = useAuth();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   // Form states
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [signupData, setSignupData] = useState({ name: '', email: '', password: '' });
+
+  // Reset position when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPosition({ x: 0, y: 0 });
+    }
+  }, [isOpen]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only allow dragging from the drag handle
+    if ((e.target as HTMLElement).closest('.drag-handle')) {
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y
+      };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setPosition({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsDragging(false);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,42 +110,51 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md z-50"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            style={{
+              transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))`
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            className="fixed left-1/2 top-1/2 w-full max-w-md max-h-[90vh] z-50"
           >
-            <div className="bg-[#141414] rounded-2xl border border-white/10 overflow-hidden">
+            <div className="bg-[#141414] rounded-2xl border border-white/10 overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-white/10">
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setActiveTab('login')}
-                    className={`text-lg font-semibold transition-colors ${
-                      activeTab === 'login' ? 'text-gold' : 'text-white/50 hover:text-white'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('signup')}
-                    className={`text-lg font-semibold transition-colors ${
-                      activeTab === 'signup' ? 'text-gold' : 'text-white/50 hover:text-white'
-                    }`}
-                  >
-                    Sign Up
-                  </button>
+              <div className="drag-handle flex items-center justify-between p-4 border-b border-white/10 cursor-move select-none bg-gradient-to-r from-[#1a1a1a] to-[#141414]">
+                <div className="flex items-center gap-2">
+                  <GripVertical size={18} className="text-white/30" />
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setActiveTab('login')}
+                      className={`text-lg font-semibold transition-colors ${
+                        activeTab === 'login' ? 'text-gold' : 'text-white/50 hover:text-white'
+                      }`}
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('signup')}
+                      className={`text-lg font-semibold transition-colors ${
+                        activeTab === 'signup' ? 'text-gold' : 'text-white/50 hover:text-white'
+                      }`}
+                    >
+                      Sign Up
+                    </button>
+                  </div>
                 </div>
                 <button
                   onClick={onClose}
                   className="p-2 rounded-lg hover:bg-white/10 transition-colors"
                 >
-                  <X size={20} className="text-white/50" />
+                  <X size={20} className="text-white/50 hover:text-white" />
                 </button>
               </div>
 
               {/* Content */}
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto">
                 {activeTab === 'login' ? (
                   <form onSubmit={handleLogin} className="space-y-4">
                     <div>
