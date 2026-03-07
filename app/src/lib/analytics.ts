@@ -114,17 +114,21 @@ class Analytics {
       const stored = JSON.parse(localStorage.getItem('analytics_events') || '[]');
       localStorage.setItem('analytics_events', JSON.stringify([...stored, ...events]));
 
-      // Try to send to server
+      // Try to send to server (silently fail on 404 - endpoint may not exist)
       if (navigator.onLine) {
-        await fetch(ANALYTICS_ENDPOINT, {
+        const response = await fetch(ANALYTICS_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ events }),
           keepalive: true,
         });
+        // Silently ignore 404 - analytics endpoint is optional
+        if (!response.ok && response.status !== 404) {
+          console.log('Analytics server error:', response.status);
+        }
       }
     } catch (error) {
-      console.log('Analytics flush failed, events stored locally');
+      // Silently fail - analytics is not critical
     }
   }
 
