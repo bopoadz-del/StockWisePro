@@ -53,11 +53,16 @@ interface StockScreenerProps {
 
 
 // Calculate score based on available metrics
-function calculateScore(stock: StockQuote): number {
+function calculateScore(stock: StockQuote | null | undefined): number {
+  // Safety check for null/undefined stock
+  if (!stock || typeof stock !== 'object') {
+    return 50; // Return default score
+  }
+  
   let score = 50; // Base score
   
   // Factor in P/E ratio (lower is better for value)
-  if (stock.pe && stock.pe > 0) {
+  if (typeof stock.pe === 'number' && stock.pe > 0) {
     if (stock.pe < 15) score += 15;
     else if (stock.pe < 25) score += 10;
     else if (stock.pe < 40) score += 5;
@@ -65,19 +70,21 @@ function calculateScore(stock: StockQuote): number {
   }
   
   // Factor in market cap (stability)
-  if (stock.marketCap) {
+  if (typeof stock.marketCap === 'number' && stock.marketCap > 0) {
     if (stock.marketCap > 500000000000) score += 10; // Large cap
     else if (stock.marketCap > 100000000000) score += 5;
   }
   
   // Factor in price momentum
-  if (stock.changesPercentage > 5) score += 10;
-  else if (stock.changesPercentage > 0) score += 5;
-  else if (stock.changesPercentage < -5) score -= 10;
-  else if (stock.changesPercentage < 0) score -= 5;
+  if (typeof stock.changesPercentage === 'number') {
+    if (stock.changesPercentage > 5) score += 10;
+    else if (stock.changesPercentage > 0) score += 5;
+    else if (stock.changesPercentage < -5) score -= 10;
+    else if (stock.changesPercentage < 0) score -= 5;
+  }
   
   // Factor in volume (liquidity)
-  if (stock.volume && stock.avgVolume) {
+  if (typeof stock.volume === 'number' && typeof stock.avgVolume === 'number' && stock.avgVolume > 0) {
     const volumeRatio = stock.volume / stock.avgVolume;
     if (volumeRatio > 1.5) score += 10;
     else if (volumeRatio > 1) score += 5;
