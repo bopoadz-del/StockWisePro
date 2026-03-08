@@ -129,17 +129,33 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const [isSearching, setIsSearching] = useState(false);
   const [usingDemoData, setUsingDemoData] = useState(false);
 
-  // Load screener stocks on mount
+  // Load screener stocks on mount - only once
   useEffect(() => {
-    loadScreenerStocks();
+    let mounted = true;
+    
+    const loadInitialData = async () => {
+      if (!mounted) return;
+      await loadScreenerStocks();
+    };
+    
+    loadInitialData();
+    
+    return () => { mounted = false; };
   }, []);
 
-  // Debounced search
+  // Debounced search - only when user types, not on initial load
   useEffect(() => {
+    // Skip initial mount - only run when searchQuery actually changes from user input
+    if (searchQuery === '' && stocks.length === 0) {
+      // Initial load case - loadScreenerStocks is called in the other useEffect
+      return;
+    }
+    
     const timer = setTimeout(() => {
       if (searchQuery.trim()) {
         performSearch(searchQuery.trim());
-      } else {
+      } else if (stocks.length > 0) {
+        // Only reload screener if we already had stocks (user cleared search)
         loadScreenerStocks();
       }
     }, 300);
@@ -209,6 +225,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         if (formattedStocks.length > 0) {
           console.log('Setting stocks:', formattedStocks.length);
           setStocks(formattedStocks);
+          setUsingDemoData(false); // Ensure demo mode is OFF when we have real data
         } else {
           console.warn('No formatted stocks, using mock');
           loadMockStocks();
