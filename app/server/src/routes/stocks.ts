@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
-import { alphaVantageService } from '../services/alphaVantageService';
+import { twelveDataService, type TDQuote } from '../services/twelveDataService';
 import { prisma } from '../utils/prisma';
 
 const router = Router();
@@ -32,7 +32,7 @@ function formatTickerForDisplay(ticker: string): string {
   return ticker.replace(/-/g, '.');
 }
 
-// Search stocks - uses Alpha Vantage if available, else mock
+// Search stocks - uses Twelve Data if available, else mock
 router.get('/search', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { q } = req.query;
@@ -41,8 +41,8 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    // Try Alpha Vantage first
-    const results = await alphaVantageService.search(q);
+    // Try Twelve Data first
+    const results = await twelveDataService.search(q);
     
     if (results.length > 0) {
       return res.json(results);
@@ -63,16 +63,16 @@ router.get('/search', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-// Get stock quote - uses Alpha Vantage if available, else mock
+// Get stock quote - uses Twelve Data if available, else mock
 router.get('/quote/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
 
-    // Try Alpha Vantage first
-    const quote = await alphaVantageService.getQuote(ticker);
+    // Try Twelve Data first
+    const quote = await twelveDataService.getQuote(ticker);
     
     if (quote && quote.price > 0) {
-      // Enrich with mock data for fields Alpha Vantage doesn't provide
+      // Enrich with mock data for fields Twelve Data doesn't provide
       const mockData = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
       return res.json({
         ...quote,
@@ -95,24 +95,22 @@ router.get('/quote/:ticker', async (req, res, next) => {
   }
 });
 
-// Debug endpoint to check Alpha Vantage directly
+// Debug endpoint to check Twelve Data directly
 router.get('/debug/quote/:ticker', async (req, res) => {
   try {
     const { ticker } = req.params;
-    const axios = require('axios');
     
-    const response = await axios.get('https://www.alphavantage.co/query', {
+    const response = await axios.get('https://api.twelvedata.com/quote', {
       params: {
-        function: 'GLOBAL_QUOTE',
         symbol: ticker,
-        apikey: process.env.ALPHA_VANTAGE_API_KEY,
+        apikey: process.env.TWELVE_DATA_API_KEY,
       },
       timeout: 10000,
     });
     
     res.json({
-      keyConfigured: !!process.env.ALPHA_VANTAGE_API_KEY,
-      keyPrefix: process.env.ALPHA_VANTAGE_API_KEY?.substring(0, 4),
+      keyConfigured: !!process.env.TWELVE_DATA_API_KEY,
+      keyPrefix: process.env.TWELVE_DATA_API_KEY?.substring(0, 4),
       apiResponse: response.data,
     });
   } catch (error: any) {
@@ -134,8 +132,8 @@ router.get('/quotes', async (req, res, next) => {
 
     const symbolList = symbols.split(',');
     
-    // Try Alpha Vantage
-    const quotes = await alphaVantageService.getBatchQuotes(symbolList);
+    // Try Twelve Data
+    const quotes = await twelveDataService.getBatchQuotes(symbolList);
     
     if (quotes.length > 0) {
       // Enrich with mock data
@@ -163,7 +161,7 @@ router.get('/quotes', async (req, res, next) => {
   }
 });
 
-// Get key metrics (mock - Alpha Vantage requires premium)
+// Get key metrics (mock - Twelve Data requires premium for some metrics)
 router.get('/metrics/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
@@ -190,13 +188,13 @@ router.get('/metrics/:ticker', async (req, res, next) => {
   }
 });
 
-// Get historical prices - uses Alpha Vantage if available
+// Get historical prices - uses Twelve Data if available
 router.get('/historical/:ticker', async (req, res, next) => {
   try {
     const { ticker } = req.params;
 
-    // Try Alpha Vantage
-    const historical = await alphaVantageService.getHistoricalPrices(ticker);
+    // Try Twelve Data
+    const historical = await twelveDataService.getHistoricalPrices(ticker);
     
     if (historical.length > 0) {
       return res.json(historical);
@@ -306,8 +304,8 @@ router.get('/screener', async (req: Request, res: Response, next: NextFunction) 
       return res.json(cachedStockData);
     }
 
-    // Try Alpha Vantage for a few stocks (respect rate limit)
-    const quotes = await alphaVantageService.getScreenerStocks();
+    // Try Twelve Data for a few stocks
+    const quotes = await twelveDataService.getScreenerStocks();
     
     if (quotes.length > 0) {
       // Enrich with mock data
