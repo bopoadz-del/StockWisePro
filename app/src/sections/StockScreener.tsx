@@ -151,7 +151,16 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     setInitialLoading(true);
     setUsingDemoData(false);
     try {
+      console.log('Fetching screener data...');
       const response = await stocksApi.getScreener();
+      console.log('Screener response:', response);
+      
+      if (response.error) {
+        console.error('Screener API error:', response.error);
+        loadMockStocks();
+        return;
+      }
+      
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         const formattedStocks: StockResult[] = [];
         
@@ -198,12 +207,15 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         }
         
         if (formattedStocks.length > 0) {
+          console.log('Setting stocks:', formattedStocks.length);
           setStocks(formattedStocks);
         } else {
+          console.warn('No formatted stocks, using mock');
           loadMockStocks();
         }
       } else {
         // API returned empty - use mock data
+        console.warn('API returned empty data, using mock');
         loadMockStocks();
       }
     } catch (error) {
