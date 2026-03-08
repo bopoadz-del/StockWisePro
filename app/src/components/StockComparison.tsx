@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Search, Trash2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fetchStockQuote, fetchKeyMetrics, calculateFMPScore, type FMPStockQuote, type FMPKeyMetrics } from '@/lib/fmpApi';
+import { stocksApi, type StockQuote, type KeyMetrics } from '@/lib/api/stocks';
 import { formatCurrency, formatPercentage, getScoreColor } from '@/lib/utils';
 import { ScoreVisualizer } from './ScoreVisualizer';
 import { SignalBadge } from './SignalBadge';
@@ -19,8 +19,8 @@ import {
 
 interface ComparisonStock {
   ticker: string;
-  quote: FMPStockQuote | null;
-  metrics: FMPKeyMetrics | null;
+  quote: StockQuote | null;
+  metrics: KeyMetrics | null;
   score: number;
   loading: boolean;
 }
@@ -28,6 +28,29 @@ interface ComparisonStock {
 interface StockComparisonProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+// Calculate score from quote and metrics
+function calculateScore(quote: StockQuote | null, metrics: KeyMetrics | null): number {
+  if (!quote) return 50;
+  
+  let score = 50; // Base score
+  
+  // Factor in P/E ratio
+  if (metrics?.peRatio && metrics.peRatio > 0) {
+    if (metrics.peRatio < 15) score += 15;
+    else if (metrics.peRatio < 25) score += 10;
+    else if (metrics.peRatio < 40) score += 5;
+    else score -= 5;
+  }
+  
+  // Factor in price momentum
+  if (quote.changesPercentage > 5) score += 10;
+  else if (quote.changesPercentage > 0) score += 5;
+  else if (quote.changesPercentage < -5) score -= 10;
+  else if (quote.changesPercentage < 0) score -= 5;
+  
+  return Math.max(0, Math.min(100, score));
 }
 
 export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
@@ -52,12 +75,14 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
     setIsAdding(false);
 
     try {
-      const [quote, metrics] = await Promise.all([
-        fetchStockQuote(ticker),
-        fetchKeyMetrics(ticker),
+      const [quoteResponse, metricsResponse] = await Promise.all([
+        stocksApi.getQuote(ticker),
+        stocksApi.getKeyMetrics(ticker),
       ]);
 
-      const scoreData = calculateFMPScore(quote || ({} as FMPStockQuote), metrics);
+      const quote = quoteResponse.data || null;
+      const metrics = metricsResponse.data || null;
+      const score = calculateScore(quote, metrics);
 
       setStocks((prev) =>
         prev.map((s) =>
@@ -66,7 +91,7 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
                 ...s,
                 quote,
                 metrics,
-                score: scoreData.score,
+                score,
                 loading: false,
               }
             : s
@@ -90,9 +115,15 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
   const chartData = categories.map((cat) => {
     const dataPoint: Record<string, number | string> = { category: cat };
     stocks.forEach((stock) => {
-      if (stock.metrics && !stock.loading) {
-        const scoreData = calculateFMPScore(stock.quote!, stock.metrics);
-        dataPoint[stock.ticker] = scoreData.breakdown[cat.toLowerCase().replace(' ', '') as keyof typeof scoreData.breakdown];
+      if (!stock.loading) {
+        // Simple breakdown for visualization
+        const breakdown: Record<string, number> = {
+          'Valuation': stock.metrics?.peRatio ? Math.min(100, (30 - stock.metrics.peRatio) * 3.33) : 50,
+          'Profitability': stock.metrics?.roe ? Math.min(100, stock.metrics.roe * 100 * 2) : 50,
+          'Financial Health': stock.metrics?.debtToEquity ? Math.max(0, (1 - stock.metrics.debtToEquity) * 100) : 50,
+          'Momentum': stock.quote?.changesPercentage ? Math.min(100, 50 + stock.quote.changesPercentage * 2) : 50,
+        };
+        dataPoint[stock.ticker] = Math.max(0, Math.min(100, breakdown[cat] || 50));
       }
     });
     return dataPoint;

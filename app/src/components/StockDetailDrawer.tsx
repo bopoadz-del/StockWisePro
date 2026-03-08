@@ -12,14 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  fetchStockQuote,
-  fetchKeyMetrics,
-  fetchHistoricalPrices,
-  calculateFMPScore,
-  type FMPStockQuote,
-  type FMPKeyMetrics,
-} from '@/lib/fmpApi';
+import { stocksApi, type StockQuote, type KeyMetrics, type HistoricalPrice } from '@/lib/api/stocks';
 import { formatCurrency, formatPercentage, formatVolume, getScoreColor } from '@/lib/utils';
 import { mockStocks } from '@/lib/data';
 import { SignalBadge } from './SignalBadge';
@@ -47,9 +40,44 @@ interface AlertPrice {
   condition: 'above' | 'below';
 }
 
+// Calculate score from quote and metrics
+function calculateScore(quote: StockQuote | null, metrics: KeyMetrics | null): { score: number; breakdown: Record<string, number> } {
+  if (!quote) {
+    return { score: 50, breakdown: { valuation: 50, profitability: 50, financialHealth: 50, momentum: 50 } };
+  }
+  
+  let score = 50; // Base score
+  
+  // Factor in P/E ratio
+  if (metrics?.peRatio && metrics.peRatio > 0) {
+    if (metrics.peRatio < 15) score += 15;
+    else if (metrics.peRatio < 25) score += 10;
+    else if (metrics.peRatio < 40) score += 5;
+    else score -= 5;
+  }
+  
+  // Factor in price momentum
+  if (quote.changesPercentage > 5) score += 10;
+  else if (quote.changesPercentage > 0) score += 5;
+  else if (quote.changesPercentage < -5) score -= 10;
+  else if (quote.changesPercentage < 0) score -= 5;
+  
+  score = Math.max(0, Math.min(100, score));
+  
+  // Create breakdown
+  const breakdown = {
+    valuation: metrics?.peRatio ? Math.max(0, Math.min(100, (30 - metrics.peRatio) * 3.33)) : 50,
+    profitability: metrics?.roe ? Math.min(100, metrics.roe * 100 * 2) : 50,
+    financialHealth: metrics?.debtToEquity ? Math.max(0, (1 - metrics.debtToEquity) * 100) : 50,
+    momentum: Math.min(100, Math.max(0, 50 + quote.changesPercentage * 2)),
+  };
+  
+  return { score, breakdown };
+}
+
 export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawerProps) {
-  const [quote, setQuote] = useState<FMPStockQuote | null>(null);
-  const [metrics, setMetrics] = useState<FMPKeyMetrics | null>(null);
+  const [quote, setQuote] = useState<StockQuote | null>(null);
+  const [metrics, setMetrics] = useState<KeyMetrics | null>(null);
   const [historicalData, setHistoricalData] = useState<{ date: string; price: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingDemoData, setUsingDemoData] = useState(false);
@@ -72,10 +100,13 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
     setUsingDemoData(false);
     try {
       // Fetch all data in parallel
-      const [quoteData, metricsData] = await Promise.all([
-        fetchStockQuote(ticker),
-        fetchKeyMetrics(ticker),
+      const [quoteResponse, metricsResponse] = await Promise.all([
+        stocksApi.getQuote(ticker),
+        stocksApi.getKeyMetrics(ticker),
       ]);
+
+      const quoteData = quoteResponse.data || null;
+      const metricsData = metricsResponse.data || null;
 
       if (quoteData) {
         setQuote(quoteData);
@@ -84,11 +115,12 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
         // Fetch historical prices for chart
         const to = new Date().toISOString().split('T')[0];
         const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const historical = await fetchHistoricalPrices(ticker, from, to);
+        const historicalResponse = await stocksApi.getHistorical(ticker, from, to);
+        const historical = historicalResponse.data || [];
         
         if (historical.length > 0) {
           setHistoricalData(
-            historical.reverse().map((h) => ({
+            historical.map((h: HistoricalPrice) => ({
               date: h.date,
               price: h.close,
             }))
@@ -124,22 +156,12 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
         yearHigh: mockStock.fiftyTwoWeekHigh || mockStock.price * 1.2,
         yearLow: mockStock.fiftyTwoWeekLow || mockStock.price * 0.8,
         marketCap: mockStock.marketCap || 0,
-        priceAvg50: mockStock.price * 0.95,
-        priceAvg200: mockStock.price * 0.90,
         volume: mockStock.volume || 1000000,
         avgVolume: mockStock.avgVolume || 1000000,
-        exchange: 'NASDAQ',
-        open: mockStock.price * 0.99,
-        previousClose: mockStock.price - mockStock.change,
         eps: 5.0,
         pe: mockStock.peRatio || 20,
-        earningsAnnouncement: '',
-        sharesOutstanding: 1000000000,
-        timestamp: Date.now(),
-      });
+      } as StockQuote);
       setMetrics({
-        symbol: mockStock.ticker,
-        date: new Date().toISOString().split('T')[0],
         peRatio: mockStock.peRatio || 20,
         priceToBookRatio: mockStock.pbRatio || 3,
         priceToSalesRatio: mockStock.psRatio || 5,
@@ -149,8 +171,7 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
         currentRatio: 2.0,
         quickRatio: 1.5,
         dividendYield: mockStock.dividendYield || 0,
-        payoutRatio: 0.3,
-      });
+      } as KeyMetrics);
       if (mockStock.sparklineData) {
         setHistoricalData(
           mockStock.sparklineData.map((price, i) => ({
@@ -222,8 +243,8 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
     URL.revokeObjectURL(url);
   };
 
-  const scoreData = quote && metrics ? calculateFMPScore(quote, metrics) : null;
-  const signal = scoreData ? (scoreData.score >= 70 ? 'buy' : scoreData.score >= 40 ? 'hold' : 'sell') : 'hold';
+  const scoreData = calculateScore(quote, metrics);
+  const signal = scoreData.score >= 70 ? 'buy' : scoreData.score >= 40 ? 'hold' : 'sell';
 
   return (
     <AnimatePresence>

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Play, RotateCcw, Save, Copy, Check, FlaskConical, Code2, LineChart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { fetchStockQuote, fetchKeyMetrics, calculateFMPScore } from '@/lib/fmpApi';
+import { stocksApi } from '@/lib/api/stocks';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { LineChart as ReLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -66,13 +66,30 @@ export function ExperimentWorkspace() {
 
       for (const ticker of sampleTickers) {
         try {
-          const [quote, metrics] = await Promise.all([
-            fetchStockQuote(ticker),
-            fetchKeyMetrics(ticker),
+          const [quoteResponse, metricsResponse] = await Promise.all([
+            stocksApi.getQuote(ticker),
+            stocksApi.getKeyMetrics(ticker),
           ]);
 
+          const quote = quoteResponse.data;
+          const metrics = metricsResponse.data;
+
           if (metrics) {
-            const oldScore = calculateFMPScore(quote || {} as any, metrics).score;
+            // Calculate simple old score
+            let oldScore = 50;
+            if (metrics.peRatio && metrics.peRatio > 0) {
+              if (metrics.peRatio < 15) oldScore += 15;
+              else if (metrics.peRatio < 25) oldScore += 10;
+              else if (metrics.peRatio < 40) oldScore += 5;
+              else oldScore -= 5;
+            }
+            if (quote?.changesPercentage) {
+              if (quote.changesPercentage > 5) oldScore += 10;
+              else if (quote.changesPercentage > 0) oldScore += 5;
+              else if (quote.changesPercentage < -5) oldScore -= 10;
+              else if (quote.changesPercentage < 0) oldScore -= 5;
+            }
+            oldScore = Math.max(0, Math.min(100, oldScore));
             
             const metricsInput = {
               pe: metrics.peRatio || 20,

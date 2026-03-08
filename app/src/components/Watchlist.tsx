@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, TrendingUp, TrendingDown, Eye, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { fetchBatchQuotes, type FMPStockQuote } from '@/lib/fmpApi';
+import { stocksApi, type StockQuote } from '@/lib/api/stocks';
 import { formatCurrency, formatPercentage } from '@/lib/utils';
 
 interface WatchlistProps {
@@ -15,7 +15,7 @@ interface WatchlistProps {
 export function Watchlist({ isOpen, onClose, onSelectStock }: WatchlistProps) {
   const [watchlist] = useLocalStorage<string[]>('watchlist', []);
   const [alerts] = useLocalStorage<{ ticker: string; targetPrice: number; condition: string }[]>('price-alerts', []);
-  const [quotes, setQuotes] = useState<FMPStockQuote[]>([]);
+  const [quotes, setQuotes] = useState<StockQuote[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -31,8 +31,10 @@ export function Watchlist({ isOpen, onClose, onSelectStock }: WatchlistProps) {
     if (watchlist.length === 0) return;
     setLoading(true);
     try {
-      const data = await fetchBatchQuotes(watchlist);
-      setQuotes(data);
+      const response = await stocksApi.getBatchQuotes(watchlist);
+      if (response.data) {
+        setQuotes(response.data);
+      }
     } catch (error) {
       console.error('Error loading watchlist:', error);
     } finally {
