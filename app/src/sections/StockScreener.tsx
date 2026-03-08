@@ -146,26 +146,61 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     try {
       const response = await stocksApi.getScreener();
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-        const formattedStocks: StockResult[] = response.data.map((quote) => ({
-          ticker: formatTickerForDisplay(quote.symbol),
-          name: quote.name,
-          price: quote.price,
-          change: quote.change,
-          changePercent: quote.changesPercentage,
-          marketCap: quote.marketCap || 0,
-          score: calculateScore(quote),
-          signal: getSignalFromScore(calculateScore(quote)),
-          volume: quote.volume,
-          pe: quote.pe,
-          sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
-        }));
-        setStocks(formattedStocks);
+        const formattedStocks: StockResult[] = [];
+        
+        for (let i = 0; i < response.data.length; i++) {
+          const quote = response.data[i];
+          
+          // Defensive: skip invalid quotes
+          if (!quote || typeof quote !== 'object') {
+            console.warn(`Invalid quote at index ${i}:`, quote);
+            continue;
+          }
+          
+          try {
+            const safeQuote = {
+              symbol: quote.symbol || 'UNKNOWN',
+              name: quote.name || 'Unknown',
+              price: typeof quote.price === 'number' ? quote.price : 0,
+              change: typeof quote.change === 'number' ? quote.change : 0,
+              changesPercentage: typeof quote.changesPercentage === 'number' ? quote.changesPercentage : 0,
+              marketCap: typeof quote.marketCap === 'number' ? quote.marketCap : 0,
+              pe: typeof quote.pe === 'number' ? quote.pe : 20,
+              volume: typeof quote.volume === 'number' ? quote.volume : 0,
+              avgVolume: typeof quote.avgVolume === 'number' ? quote.avgVolume : (typeof quote.volume === 'number' ? quote.volume : 0),
+            };
+            
+            const score = calculateScore(safeQuote as StockQuote);
+            
+            formattedStocks.push({
+              ticker: formatTickerForDisplay(safeQuote.symbol),
+              name: safeQuote.name,
+              price: safeQuote.price,
+              change: safeQuote.change,
+              changePercent: safeQuote.changesPercentage,
+              marketCap: safeQuote.marketCap,
+              score: score,
+              signal: getSignalFromScore(score),
+              volume: safeQuote.volume,
+              pe: safeQuote.pe,
+              sparklineData: generateSparklineData(safeQuote.price, safeQuote.changesPercentage),
+            });
+          } catch (itemError) {
+            console.warn(`Error processing quote at index ${i}:`, itemError);
+          }
+        }
+        
+        if (formattedStocks.length > 0) {
+          setStocks(formattedStocks);
+        } else {
+          loadMockStocks();
+        }
       } else {
         // API returned empty - use mock data
         loadMockStocks();
       }
     } catch (error) {
-      console.log('API error, using demo data');
+      console.error('Screener API error:', error);
       loadMockStocks();
     } finally {
       setInitialLoading(false);
@@ -204,20 +239,55 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         const quotesResponse = await stocksApi.getBatchQuotes(symbols);
         
         if (quotesResponse.data && Array.isArray(quotesResponse.data) && quotesResponse.data.length > 0) {
-          const formattedStocks: StockResult[] = quotesResponse.data.map((quote) => ({
-            ticker: formatTickerForDisplay(quote.symbol),
-            name: quote.name,
-            price: quote.price,
-            change: quote.change,
-            changePercent: quote.changesPercentage,
-            marketCap: quote.marketCap || 0,
-            score: calculateScore(quote),
-            signal: getSignalFromScore(calculateScore(quote)),
-            volume: quote.volume,
-            pe: quote.pe,
-            sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
-          }));
-          setStocks(formattedStocks);
+          const formattedStocks: StockResult[] = [];
+          
+          for (let i = 0; i < quotesResponse.data.length; i++) {
+            const quote = quotesResponse.data[i];
+            
+            // Defensive: skip invalid quotes
+            if (!quote || typeof quote !== 'object') {
+              console.warn(`Invalid quote at index ${i}:`, quote);
+              continue;
+            }
+            
+            try {
+              const safeQuote = {
+                symbol: quote.symbol || 'UNKNOWN',
+                name: quote.name || 'Unknown',
+                price: typeof quote.price === 'number' ? quote.price : 0,
+                change: typeof quote.change === 'number' ? quote.change : 0,
+                changesPercentage: typeof quote.changesPercentage === 'number' ? quote.changesPercentage : 0,
+                marketCap: typeof quote.marketCap === 'number' ? quote.marketCap : 0,
+                pe: typeof quote.pe === 'number' ? quote.pe : 20,
+                volume: typeof quote.volume === 'number' ? quote.volume : 0,
+                avgVolume: typeof quote.avgVolume === 'number' ? quote.avgVolume : (typeof quote.volume === 'number' ? quote.volume : 0),
+              };
+              
+              const score = calculateScore(safeQuote as StockQuote);
+              
+              formattedStocks.push({
+                ticker: formatTickerForDisplay(safeQuote.symbol),
+                name: safeQuote.name,
+                price: safeQuote.price,
+                change: safeQuote.change,
+                changePercent: safeQuote.changesPercentage,
+                marketCap: safeQuote.marketCap,
+                score: score,
+                signal: getSignalFromScore(score),
+                volume: safeQuote.volume,
+                pe: safeQuote.pe,
+                sparklineData: generateSparklineData(safeQuote.price, safeQuote.changesPercentage),
+              });
+            } catch (itemError) {
+              console.warn(`Error processing quote at index ${i}:`, itemError);
+            }
+          }
+          
+          if (formattedStocks.length > 0) {
+            setStocks(formattedStocks);
+          } else {
+            searchMockStocks(query);
+          }
         } else {
           // API returned empty - use mock search
           searchMockStocks(query);
@@ -227,7 +297,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         searchMockStocks(query);
       }
     } catch (error) {
-      console.log('Search API error, using demo data');
+      console.error('Search API error:', error);
       searchMockStocks(query);
     } finally {
       setIsSearching(false);
