@@ -75,17 +75,36 @@ router.get('/quote/:ticker', async (req, res, next) => {
       // Enrich with mock data for fields Twelve Data doesn't provide
       const mockData = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
       return res.json({
-        ...quote,
+        symbol: quote.symbol,
         name: mockData?.name || quote.name,
+        price: quote.price,
+        change: quote.change,
+        changesPercentage: quote.changePercent, // Map to frontend expected field
         marketCap: mockData?.marketCap || 0,
         pe: mockData?.pe || 20,
+        volume: quote.volume,
+        avgVolume: mockData?.volume || quote.volume,
+        dayLow: quote.low,
+        dayHigh: quote.high,
+        yearLow: 0,
+        yearHigh: 0,
+        eps: 0,
       });
     }
 
     // Fallback to mock data
     const mockStock = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
     if (mockStock) {
-      return res.json({...mockStock, _source: 'mock'});
+      return res.json({
+        ...mockStock,
+        avgVolume: mockStock.volume,
+        dayLow: 0,
+        dayHigh: 0,
+        yearLow: 0,
+        yearHigh: 0,
+        eps: 0,
+        _source: 'mock'
+      });
     }
 
     res.status(404).json({ error: 'Stock not found' });
@@ -136,14 +155,24 @@ router.get('/quotes', async (req, res, next) => {
     const quotes = await twelveDataService.getBatchQuotes(symbolList);
     
     if (quotes.length > 0) {
-      // Enrich with mock data
+      // Enrich with mock data and map fields
       const enrichedQuotes = quotes.map(q => {
         const mockData = MOCK_STOCKS.find(s => s.symbol === q.symbol.toUpperCase());
         return {
-          ...q,
+          symbol: q.symbol,
           name: mockData?.name || q.name,
+          price: q.price,
+          change: q.change,
+          changesPercentage: q.changePercent, // Map to frontend expected field
           marketCap: mockData?.marketCap || 0,
           pe: mockData?.pe || 20,
+          volume: q.volume,
+          avgVolume: mockData?.volume || q.volume,
+          dayLow: q.low,
+          dayHigh: q.high,
+          yearLow: 0,
+          yearHigh: 0,
+          eps: 0,
         };
       });
       return res.json(enrichedQuotes);
@@ -152,7 +181,15 @@ router.get('/quotes', async (req, res, next) => {
     // Fallback to mock data
     const mockQuotes = MOCK_STOCKS.filter(s => 
       symbolList.some(sym => sym.toUpperCase() === s.symbol)
-    );
+    ).map(s => ({
+      ...s,
+      avgVolume: s.volume,
+      dayLow: 0,
+      dayHigh: 0,
+      yearLow: 0,
+      yearHigh: 0,
+      eps: 0,
+    }));
     
     res.json(mockQuotes);
   } catch (error: any) {
@@ -308,14 +345,24 @@ router.get('/screener', async (req: Request, res: Response, next: NextFunction) 
     const quotes = await twelveDataService.getScreenerStocks();
     
     if (quotes.length > 0) {
-      // Enrich with mock data
+      // Enrich with mock data and map fields
       const enrichedQuotes = quotes.map(q => {
         const mockData = MOCK_STOCKS.find(s => s.symbol === q.symbol.toUpperCase());
         return {
-          ...q,
+          symbol: q.symbol,
           name: mockData?.name || q.name,
+          price: q.price,
+          change: q.change,
+          changesPercentage: q.changePercent, // Map to frontend expected field
           marketCap: mockData?.marketCap || 0,
           pe: mockData?.pe || 20,
+          volume: q.volume,
+          avgVolume: mockData?.volume || q.volume,
+          dayLow: q.low,
+          dayHigh: q.high,
+          yearLow: 0,
+          yearHigh: 0,
+          eps: 0,
         };
       });
       
@@ -326,12 +373,30 @@ router.get('/screener', async (req: Request, res: Response, next: NextFunction) 
       return res.json(enrichedQuotes);
     }
 
-    // Fallback to all mock stocks
-    res.json(MOCK_STOCKS);
+    // Fallback to all mock stocks with full fields
+    const mockData = MOCK_STOCKS.map(s => ({
+      ...s,
+      avgVolume: s.volume,
+      dayLow: 0,
+      dayHigh: 0,
+      yearLow: 0,
+      yearHigh: 0,
+      eps: 0,
+    }));
+    res.json(mockData);
   } catch (error: any) {
     console.error('Screener error:', error.message);
-    // Always return mock data on error
-    res.json(MOCK_STOCKS);
+    // Always return mock data on error with full fields
+    const mockData = MOCK_STOCKS.map(s => ({
+      ...s,
+      avgVolume: s.volume,
+      dayLow: 0,
+      dayHigh: 0,
+      yearLow: 0,
+      yearHigh: 0,
+      eps: 0,
+    }));
+    res.json(mockData);
   }
 });
 
