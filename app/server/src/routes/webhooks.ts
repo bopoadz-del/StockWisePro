@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth';
+import { UserRole } from '@prisma/client';
 import { audit } from '../middleware/auditLogger';
 import { prisma } from '../config/database';
 import { generateSecret, generateWebhookSignature } from '../utils/encryption';
@@ -110,7 +111,7 @@ router.get('/', authenticate, async (req, res) => {
 router.post(
   '/',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.webhookCreated(),
   async (req, res) => {
     try {
@@ -217,7 +218,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.patch(
   '/:id',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.webhookUpdated(),
   async (req, res) => {
     try {
@@ -252,7 +253,7 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.webhookDeleted(),
   async (req, res) => {
     try {
@@ -278,7 +279,7 @@ router.delete(
 router.post(
   '/:id/regenerate-secret',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.webhookUpdated(),
   async (req, res) => {
     try {
@@ -314,7 +315,7 @@ router.post(
 router.post(
   '/:id/test',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -348,7 +349,7 @@ router.post(
       let error;
       
       try {
-        const fetch = (await import('node-fetch')).default;
+        const fetch = require('node-fetch');
         response = await fetch(webhook.url, {
           method: 'POST',
           headers: {
@@ -380,7 +381,7 @@ router.post(
           },
           requestBody: body,
           responseStatus: response?.status,
-          responseHeaders: response ? Object.fromEntries(response.headers.entries()) : undefined,
+          responseHeaders: response ? Object.fromEntries(response.headers.entries()) as any : undefined,
           responseBody: response ? await response.text() : undefined,
           responseTime,
           status: response?.ok ? 'DELIVERED' : 'FAILED',

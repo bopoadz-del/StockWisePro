@@ -71,11 +71,7 @@ router.get('/:id', authenticate, async (req, res) => {
         deletedAt: null,
       },
       include: {
-        holdings: {
-          include: {
-            stock: true,
-          },
-        },
+        holdings: true,
         transactions: {
           orderBy: { executedAt: 'desc' },
           take: 50,

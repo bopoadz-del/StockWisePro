@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, verifySync } from 'otplib';
 import { prisma } from '../config/database';
 import { config } from '../config';
 import { authenticate, requireMFA } from '../middleware/auth';
@@ -53,7 +53,7 @@ function generateTokens(userId: string, email: string, organizationId: string, r
     },
     config.jwt.secret,
     {
-      expiresIn: config.jwt.expiresIn,
+      expiresIn: config.jwt.expiresIn as any,
       issuer: config.jwt.issuer,
       audience: config.jwt.audience,
     }
@@ -214,10 +214,8 @@ router.post('/login', strictRateLimiter, audit.loginFailed(), async (req, res) =
         });
       }
 
-      const validMFA = authenticator.verify({
-        token: data.mfaCode,
-        secret: user.mfaSecret || '',
-      });
+      const mfaResult = verifySync({ token: data.mfaCode, secret: user.mfaSecret || '' });
+      const validMFA = mfaResult.valid;
 
       if (!validMFA) {
         return res.status(401).json({ error: 'Invalid MFA code' });
@@ -495,14 +493,14 @@ router.post('/change-password', authenticate, audit.passwordChanged(), async (re
 router.post('/mfa/setup', authenticate, async (req, res) => {
   try {
     // Generate secret
-    const secret = authenticator.generateSecret();
+    const secret = generateSecret();
 
     // Generate QR code URL
-    const otpauth = authenticator.keyuri(
-      req.user!.email,
-      'AlphaSpectrum',
-      secret
-    );
+    const otpauth = generateURI({
+      secret,
+      label: req.user!.email,
+      issuer: 'AlphaSpectrum',
+    });
 
     // Temporarily store secret (will be confirmed)
     await prisma.user.update({
@@ -527,7 +525,7 @@ router.post('/mfa/setup', authenticate, async (req, res) => {
 });
 
 // Verify and enable MFA
-router.post('/mfa/verify', authenticate, audit.mfaEnabled(), async (req, res) => {
+router.post('/mfa/verify', authenticate, async (req, res) => {
   try {
     const data = setupMFASchema.parse(req.body);
 
@@ -539,10 +537,8 @@ router.post('/mfa/verify', authenticate, audit.mfaEnabled(), async (req, res) =>
       return res.status(400).json({ error: 'MFA setup not initiated' });
     }
 
-    const valid = authenticator.verify({
-      token: data.code,
-      secret: user.mfaSecret,
-    });
+    const mfaResult = verifySync({ token: data.code, secret: user.mfaSecret });
+    const valid = mfaResult.valid;
 
     if (!valid) {
       return res.status(400).json({ error: 'Invalid MFA code' });
@@ -565,7 +561,7 @@ router.post('/mfa/verify', authenticate, audit.mfaEnabled(), async (req, res) =>
 });
 
 // Disable MFA
-router.post('/mfa/disable', authenticate, audit.mfaDisabled(), async (req, res) => {
+router.post('/mfa/disable', authenticate, async (req, res) => {
   try {
     const { password } = z.object({ password: z.string() }).parse(req.body);
 

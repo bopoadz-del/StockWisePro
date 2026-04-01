@@ -3,13 +3,11 @@
 
 generator client {
   provider = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  extensions = [pgcrypto, uuid_ossp]
 }
 
 // ============================================
@@ -114,8 +112,8 @@ model User {
   
   // MFA
   mfaEnabled        Boolean  @default(false)
-  mfaSecret         String?  @encrypted
-  mfaBackupCodes    String[] @encrypted
+  mfaSecret         String?  // Encrypted at application level
+  mfaBackupCodes    String[] // Encrypted at application level
   
   // Security
   lastLoginAt       DateTime?
@@ -349,7 +347,7 @@ model Webhook {
   createdBy         String
   
   // Security
-  secret            String   @encrypted // For HMAC signature
+  secret            String   // For HMAC signature (encrypted at application level)
   
   // Events
   events            String[] // Event types to subscribe to

@@ -158,7 +158,7 @@ export const apiKeyRateLimiter = async (req: Request, res: Response, next: NextF
     const key = `ratelimit:apikey:${apiKey.id}`;
     const limitConfig: RateLimitConfig = {
       windowMs: 60 * 60 * 1000, // 1 hour
-      maxRequests: apiKey.rateLimit,
+      maxRequests: (apiKey as any).rateLimit || 1000,
     };
     
     const { allowed, info } = await checkRateLimit(key, limitConfig);

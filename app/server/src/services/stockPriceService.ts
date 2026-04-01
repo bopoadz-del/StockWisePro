@@ -1,177 +1,154 @@
-import { Server } from 'socket.io';
-import { prisma } from '../utils/prisma';
-import { twelveDataService, type TDQuote } from './twelveDataService';
-
-interface ClientSubscription {
-  socketId: string;
-  tickers: Set<string>;
-}
-
-// Mock stock data for fallback
-const MOCK_STOCKS: TDQuote[] = [
-  { symbol: 'AAPL', name: 'Apple Inc.', price: 195.89, change: 2.45, changePercent: 1.27, volume: 54200000, latestTradingDay: new Date().toISOString().split('T')[0], open: 193.44, high: 196.50, low: 193.00, previousClose: 193.44 },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 420.55, change: 5.32, changePercent: 1.28, volume: 22100000, latestTradingDay: new Date().toISOString().split('T')[0], open: 415.23, high: 422.00, low: 414.50, previousClose: 415.23 },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 175.98, change: -1.23, changePercent: -0.69, volume: 18900000, latestTradingDay: new Date().toISOString().split('T')[0], open: 177.21, high: 178.00, low: 175.50, previousClose: 177.21 },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.35, change: 3.12, changePercent: 1.78, volume: 38900000, latestTradingDay: new Date().toISOString().split('T')[0], open: 175.23, high: 179.00, low: 175.00, previousClose: 175.23 },
-  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -8.75, changePercent: -3.40, volume: 98700000, latestTradingDay: new Date().toISOString().split('T')[0], open: 257.25, high: 258.00, low: 247.00, previousClose: 257.25 },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 875.28, change: 15.42, changePercent: 1.79, volume: 45200000, latestTradingDay: new Date().toISOString().split('T')[0], open: 859.86, high: 880.00, low: 858.00, previousClose: 859.86 },
-  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.68, change: 7.89, changePercent: 1.58, volume: 15200000, latestTradingDay: new Date().toISOString().split('T')[0], open: 497.79, high: 508.00, low: 496.00, previousClose: 497.79 },
-];
+import { prisma } from '../config/database';
+import axios from 'axios';
+import { config } from '../config';
+import { alertService } from './alertService';
 
 export class StockPriceService {
-  private io: Server;
-  private subscriptions: Map<string, ClientSubscription> = new Map();
-  private allSubscribedTickers: Set<string> = new Set();
-  private updateInterval: NodeJS.Timeout | null = null;
+  private alphaVantageKey: string;
+  private twelveDataKey: string;
 
-  constructor(io: Server) {
-    this.io = io;
+  constructor() {
+    this.alphaVantageKey = config.apis.alphaVantage.key;
+    this.twelveDataKey = config.apis.twelveData.key;
   }
 
-  subscribeClient(socketId: string, tickers: string[]) {
-    // Remove old subscriptions
-    this.unsubscribeClient(socketId);
+  async getQuote(ticker: string): Promise<any> {
+    // Try Twelve Data first (better free tier)
+    if (this.twelveDataKey) {
+      try {
+        return await this.getFromTwelveData(ticker);
+      } catch (error) {
+        console.warn('Twelve Data failed, trying fallback...');
+      }
+    }
 
-    // Add new subscription
-    const normalizedTickers = tickers.map((t) => t.toUpperCase().replace(/\./g, '-'));
-    this.subscriptions.set(socketId, {
-      socketId,
-      tickers: new Set(normalizedTickers),
+    // Fallback to Alpha Vantage
+    if (this.alphaVantageKey) {
+      try {
+        return await this.getFromAlphaVantage(ticker);
+      } catch (error) {
+        console.warn('Alpha Vantage failed');
+      }
+    }
+
+    // Return cached data if available
+    const cached = await this.getCachedQuote(ticker);
+    if (cached) {
+      return cached;
+    }
+
+    throw new Error('Unable to fetch stock price and no cached data available');
+  }
+
+  private async getFromTwelveData(ticker: string): Promise<any> {
+    const response = await axios.get(
+      `https://api.twelvedata.com/quote?symbol=${ticker}&apikey=${this.twelveDataKey}`,
+      { timeout: 10000 }
+    );
+
+    if (response.data.status === 'error') {
+      throw new Error(response.data.message);
+    }
+
+    const data = response.data;
+    return {
+      ticker: ticker.toUpperCase(),
+      price: parseFloat(data.close),
+      change: parseFloat(data.change),
+      changePercent: parseFloat(data.percent_change),
+      volume: parseInt(data.volume),
+      timestamp: new Date(),
+    };
+  }
+
+  private async getFromAlphaVantage(ticker: string): Promise<any> {
+    const response = await axios.get(
+      'https://www.alphavantage.co/query',
+      {
+        params: {
+          function: 'GLOBAL_QUOTE',
+          symbol: ticker,
+          apikey: this.alphaVantageKey,
+        },
+        timeout: 10000,
+      }
+    );
+
+    const quote = response.data['Global Quote'];
+    if (!quote || Object.keys(quote).length === 0) {
+      throw new Error('No data available from Alpha Vantage');
+    }
+
+    return {
+      ticker: ticker.toUpperCase(),
+      price: parseFloat(quote['05. price']),
+      change: parseFloat(quote['09. change']),
+      changePercent: parseFloat(quote['10. change percent'].replace('%', '')),
+      volume: parseInt(quote['06. volume']),
+      timestamp: new Date(),
+    };
+  }
+
+  private async getCachedQuote(ticker: string): Promise<any | null> {
+    const stock = await prisma.stock.findUnique({
+      where: { ticker: ticker.toUpperCase() },
     });
 
-    // Update all subscribed tickers
-    this.updateAllSubscribedTickers();
-  }
-
-  unsubscribeClient(socketId: string, tickers?: string[]) {
-    const subscription = this.subscriptions.get(socketId);
-    if (!subscription) return;
-
-    if (tickers) {
-      // Unsubscribe specific tickers
-      tickers.forEach((t) => subscription.tickers.delete(t.toUpperCase().replace(/\./g, '-')));
-    } else {
-      // Unsubscribe all
-      this.subscriptions.delete(socketId);
+    if (!stock || !stock.cachedPrice) {
+      return null;
     }
 
-    this.updateAllSubscribedTickers();
+    // Check if cache is fresh (less than 5 minutes old)
+    if (stock.cachedAt && new Date().getTime() - stock.cachedAt.getTime() < 5 * 60 * 1000) {
+      return {
+        ticker: stock.ticker,
+        price: stock.cachedPrice,
+        change: stock.cachedChange,
+        changePercent: stock.cachedChangePercent,
+        volume: stock.cachedVolume,
+        timestamp: stock.cachedAt,
+        cached: true,
+      };
+    }
+
+    return null;
   }
 
-  removeClient(socketId: string) {
-    this.subscriptions.delete(socketId);
-    this.updateAllSubscribedTickers();
-  }
-
-  private updateAllSubscribedTickers() {
-    this.allSubscribedTickers.clear();
-    this.subscriptions.forEach((sub) => {
-      sub.tickers.forEach((ticker) => this.allSubscribedTickers.add(ticker));
+  async updateCache(ticker: string, data: any): Promise<void> {
+    await prisma.stock.upsert({
+      where: { ticker: ticker.toUpperCase() },
+      create: {
+        ticker: ticker.toUpperCase(),
+        name: ticker.toUpperCase(),
+        cachedPrice: data.price,
+        cachedChange: data.change,
+        cachedChangePercent: data.changePercent,
+        cachedVolume: data.volume,
+        cachedAt: new Date(),
+      },
+      update: {
+        cachedPrice: data.price,
+        cachedChange: data.change,
+        cachedChangePercent: data.changePercent,
+        cachedVolume: data.volume,
+        cachedAt: new Date(),
+      },
     });
-  }
 
-  startPriceUpdates() {
-    // Update every 60 seconds (Twelve Data free tier: 800 calls/day)
-    this.updateInterval = setInterval(async () => {
-      await this.broadcastPriceUpdates();
-    }, 60000);
-  }
+    // Store historical price
+    await prisma.stockPrice.create({
+      data: {
+        ticker: ticker.toUpperCase(),
+        price: data.price,
+        change: data.change || 0,
+        changePercent: data.changePercent || 0,
+        volume: data.volume || 0,
+      },
+    });
 
-  stopPriceUpdates() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-  }
-
-  private async broadcastPriceUpdates() {
-    if (this.allSubscribedTickers.size === 0) return;
-
-    try {
-      // Get subscribed tickers
-      const tickers = Array.from(this.allSubscribedTickers).slice(0, 5); // Limit to 5
-      
-      // Fetch quotes from Twelve Data
-      const quotes: TDQuote[] = await twelveDataService.getBatchQuotes(tickers);
-
-      // If no quotes from API, use mock data
-      if (quotes.length === 0) {
-        for (const ticker of tickers) {
-          const mockStock = MOCK_STOCKS.find(s => s.symbol === ticker.toUpperCase());
-          if (mockStock) {
-            quotes.push(mockStock);
-          }
-        }
-      }
-
-      // Group updates by client
-      this.subscriptions.forEach((subscription) => {
-        const clientUpdates = quotes.filter((q) =>
-          subscription.tickers.has(q.symbol.toUpperCase().replace(/\./g, '-'))
-        );
-
-        if (clientUpdates.length > 0) {
-          this.io.to(subscription.socketId).emit('prices:update', clientUpdates);
-        }
-      });
-
-      // Update cache
-      for (const quote of quotes) {
-        await prisma.cachedStock.upsert({
-          where: { ticker: quote.symbol.toUpperCase() },
-          update: {
-            price: quote.price,
-            change: quote.change,
-            changePercent: quote.changePercent,
-            volume: quote.volume,
-            lastUpdated: new Date(),
-          },
-          create: {
-            ticker: quote.symbol.toUpperCase(),
-            name: quote.name,
-            price: quote.price,
-            change: quote.change,
-            changePercent: quote.changePercent,
-            volume: quote.volume,
-          },
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching price updates:', error);
-    }
-  }
-
-  async updateCachedPrices() {
-    try {
-      // Get popular stocks to cache (limit to 5)
-      const popularTickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'];
-
-      const quotes = await twelveDataService.getBatchQuotes(popularTickers);
-
-      for (const quote of quotes) {
-        await prisma.cachedStock.upsert({
-          where: { ticker: quote.symbol.toUpperCase() },
-          update: {
-            price: quote.price,
-            change: quote.change,
-            changePercent: quote.changePercent,
-            volume: quote.volume,
-            lastUpdated: new Date(),
-          },
-          create: {
-            ticker: quote.symbol.toUpperCase(),
-            name: quote.name,
-            price: quote.price,
-            change: quote.change,
-            changePercent: quote.changePercent,
-            volume: quote.volume,
-          },
-        });
-      }
-
-      console.log('Cached stock prices updated');
-    } catch (error) {
-      console.error('Error updating cached prices:', error);
-    }
+    // Check alerts
+    await alertService.checkAlerts(ticker, data.price);
   }
 }
+
+export const stockPriceService = new StockPriceService();

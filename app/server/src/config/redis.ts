@@ -18,7 +18,7 @@ export function initializeRedis(): Redis {
   }
   
   redis = new Redis(redisUrl, {
-    retryStrategy: (times) => {
+    retryStrategy: (times: number) => {
       const delay = Math.min(times * 50, 2000);
       return delay;
     },
@@ -30,7 +30,7 @@ export function initializeRedis(): Redis {
     console.log('Redis connected successfully');
   });
   
-  redis.on('error', (error) => {
+  redis.on('error', (error: any) => {
     console.error('Redis error:', error);
   });
   
@@ -118,7 +118,6 @@ function createMockRedis(): Redis {
     },
     
     async ttl(key: string): Promise<number> {
-      // Simplified - returns -1 if key exists, -2 if not
       return store.has(key) ? -1 : -2;
     },
     
@@ -175,7 +174,6 @@ function createMockRedis(): Redis {
       expirations.clear();
     },
     
-    // Event emitter stubs
     on(event: string, handler: Function) {
       if (event === 'connect') {
         setImmediate(() => handler());

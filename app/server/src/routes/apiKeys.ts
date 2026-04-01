@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth';
+import { UserRole } from '@prisma/client';
 import { audit } from '../middleware/auditLogger';
 import { prisma } from '../config/database';
 import { generateApiKey, hashApiKey, maskSensitiveData } from '../utils/encryption';
@@ -21,7 +22,7 @@ const updateApiKeySchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   allowedIps: z.array(z.string().ip()).optional(),
-  isActive: z.boolean().optional(),
+
 });
 
 // List API keys
@@ -44,7 +45,7 @@ router.get('/', authenticate, async (req, res) => {
         lastUsedAt: true,
         usageCount: true,
         expiresAt: true,
-        isActive: true,
+        
         createdAt: true,
         createdBy: true,
       },
@@ -61,7 +62,7 @@ router.get('/', authenticate, async (req, res) => {
 router.post(
   '/',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.apiKeyCreated(),
   async (req, res) => {
     try {
@@ -166,7 +167,7 @@ router.get('/:id', authenticate, async (req, res) => {
         lastUsedAt: true,
         usageCount: true,
         expiresAt: true,
-        isActive: true,
+        
         revokedAt: true,
         revokedReason: true,
         createdAt: true,
@@ -189,7 +190,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.patch(
   '/:id',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -223,7 +224,7 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.apiKeyRevoked(),
   async (req, res) => {
     try {
@@ -240,7 +241,7 @@ router.delete(
           revokedAt: new Date(),
           revokedBy: req.user!.id,
           revokedReason: reason,
-          isActive: false,
+
         },
       });
       
@@ -318,7 +319,7 @@ router.get('/:id/logs', authenticate, async (req, res) => {
 router.post(
   '/:id/roll',
   authenticate,
-  requireRole(UserRole.ADMIN),
+  requireRole('ADMIN' as UserRole),
   audit.apiKeyRevoked(),
   async (req, res) => {
     try {
@@ -344,7 +345,7 @@ router.post(
           revokedAt: new Date(),
           revokedBy: req.user!.id,
           revokedReason: 'Rolled to new key',
-          isActive: false,
+
         },
       });
       

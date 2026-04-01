@@ -18,21 +18,10 @@ interface AuditLogOptions {
  */
 export function auditLog(options: AuditLogOptions) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // Capture start time
-    const startTime = Date.now();
-    
-    // Store original end function
-    const originalEnd = res.end;
-    
-    // Override end function to capture response
-    res.end = function(chunk?: any, encoding?: any, cb?: any) {
-      // Restore original end
-      res.end = originalEnd;
-      res.end(chunk, encoding, cb);
-      
-      // Fire and forget audit log creation
-      createAuditLog(req, res, options, startTime).catch(console.error);
-    };
+    // Process after response is sent
+    res.on('finish', () => {
+      createAuditLog(req, res, options).catch(console.error);
+    });
     
     next();
   };
@@ -44,8 +33,7 @@ export function auditLog(options: AuditLogOptions) {
 async function createAuditLog(
   req: Request,
   res: Response,
-  options: AuditLogOptions,
-  startTime: number
+  options: AuditLogOptions
 ) {
   try {
     const organizationId = req.organization?.id;
@@ -64,7 +52,6 @@ async function createAuditLog(
       path: req.path,
       method: req.method,
       statusCode: res.statusCode,
-      responseTime: Date.now() - startTime,
     };
     
     // Add request body if enabled (with sensitive data masking)
@@ -189,7 +176,7 @@ export async function logAuditEvent(
 
 // Pre-configured audit loggers for common operations
 
-export const audit = {
+export const audit: Record<string, any> = {
   // Auth operations
   login: () => auditLog({
     action: AuditAction.LOGIN,
@@ -216,6 +203,18 @@ export const audit = {
     getDescription: (req) => `User ${req.user?.email} changed password`,
   }),
   
+  mfaEnabled: () => auditLog({
+    action: AuditAction.MFA_ENABLED,
+    resourceType: 'user',
+    getDescription: (req) => `MFA enabled for user ${req.user?.email}`,
+  }),
+  
+  mfaDisabled: () => auditLog({
+    action: AuditAction.MFA_DISABLED,
+    resourceType: 'user',
+    getDescription: (req) => `MFA disabled for user ${req.user?.email}`,
+  }),
+  
   // User management
   userCreated: () => auditLog({
     action: AuditAction.USER_CREATED,
@@ -236,6 +235,12 @@ export const audit = {
     resourceType: 'user',
     getResourceId: (req) => req.params.id,
     getDescription: (req) => `User ${req.params.id} deleted by ${req.user?.email}`,
+  }),
+  
+  userInvited: () => auditLog({
+    action: AuditAction.USER_INVITED,
+    resourceType: 'user',
+    getDescription: (req) => `User ${req.body.email} invited by ${req.user?.email}`,
   }),
   
   // API key operations
@@ -274,19 +279,31 @@ export const audit = {
     getDescription: (req) => `Webhook ${req.params.id} deleted by ${req.user?.email}`,
   }),
   
+  orgUpdated: () => auditLog({
+    action: AuditAction.ORG_UPDATED,
+    resourceType: 'organization',
+    getDescription: (req) => `Organization updated by ${req.user?.email}`,
+  }),
+  
+  orgSettingsChanged: () => auditLog({
+    action: AuditAction.ORG_SETTINGS_CHANGED,
+    resourceType: 'organization',
+    getDescription: (req) => `Organization settings changed by ${req.user?.email}`,
+  }),
+  
   // Security events
   permissionDenied: () => auditLog({
     action: AuditAction.PERMISSION_DENIED,
     resourceType: 'access_control',
     getDescription: (req) => `Permission denied for ${req.user?.email} accessing ${req.path}`,
-    getMetadata: (req) => ({ requiredPermission: req.requiredPermission }),
+    getMetadata: (req: any) => ({ requiredPermission: req.requiredPermission }),
   }),
   
   rateLimited: () => auditLog({
     action: AuditAction.RATE_LIMITED,
     resourceType: 'rate_limit',
     getDescription: (req) => `Rate limit exceeded by ${req.user?.email || req.ip}`,
-    getMetadata: (req) => ({ rateLimitKey: req.rateLimitKey }),
+    getMetadata: (req: any) => ({ rateLimitKey: req.rateLimitKey }),
   }),
 };
 

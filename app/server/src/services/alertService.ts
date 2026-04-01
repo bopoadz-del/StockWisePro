@@ -1,74 +1,82 @@
-import axios from 'axios';
-import { prisma } from '../utils/prisma';
-import type { PriceAlert } from '@prisma/client';
-
-const FMP_API_KEY = process.env.FMP_API_KEY || 'W0ZNDulEbCUkYvy20BcDJIjN91dn4lTJ';
-const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
-
-export interface AlertWithUser extends PriceAlert {
-  user: {
-    email: string;
-    name: string | null;
-  };
-}
+import { prisma } from '../config/database';
+import { io } from '../index';
 
 export class AlertService {
-  async checkAlerts(): Promise<AlertWithUser[]> {
-    const triggeredAlerts: AlertWithUser[] = [];
-
-    // Get all active alerts
-    const alerts = await prisma.priceAlert.findMany({
-      where: {
-        isActive: true,
-        wasTriggered: false,
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    if (alerts.length === 0) return triggeredAlerts;
-
-    // Get unique tickers
-    const tickers = [...new Set(alerts.map((a) => a.ticker))];
-
+  async checkAlerts(ticker: string, currentPrice: number): Promise<void> {
     try {
-      // Fetch current prices
-      const response = await axios.get(
-        `${FMP_BASE_URL}/quote/${tickers.join(',')}?apikey=${FMP_API_KEY}`
-      );
+      // Find all active alerts for this ticker
+      const alerts = await prisma.alert.findMany({
+        where: {
+          ticker: ticker.toUpperCase(),
+          isActive: true,
+          deletedAt: null,
+        },
+      });
 
-      const quotes = response.data;
-      const priceMap = new Map(
-        quotes.map((q: any) => [q.symbol.toUpperCase(), q.price])
-      );
-
-      // Check each alert
       for (const alert of alerts) {
-        const currentPrice = priceMap.get(alert.ticker) as number | undefined;
-        if (!currentPrice) continue;
-
-        const shouldTrigger =
-          (alert.condition === 'ABOVE' && currentPrice >= alert.targetPrice) ||
-          (alert.condition === 'BELOW' && currentPrice <= alert.targetPrice);
-
-        if (shouldTrigger) {
-          // Update alert as triggered
-          await prisma.priceAlert.update({
-            where: { id: alert.id },
-            data: {
-              wasTriggered: true,
-              triggeredAt: new Date(),
-            },
-          });
-
-          triggeredAlerts.push(alert);
+        const triggered = this.evaluateAlert(alert, currentPrice);
+        
+        if (triggered) {
+          await this.triggerAlert(alert, currentPrice);
         }
       }
     } catch (error) {
       console.error('Error checking alerts:', error);
     }
+  }
 
-    return triggeredAlerts;
+  private evaluateAlert(alert: any, currentPrice: number): boolean {
+    const targetValue = parseFloat(alert.value.toString());
+    
+    switch (alert.condition) {
+      case 'ABOVE':
+        return currentPrice > targetValue;
+      case 'BELOW':
+        return currentPrice < targetValue;
+      case 'EQUALS':
+        return Math.abs(currentPrice - targetValue) < 0.01;
+      default:
+        return false;
+    }
+  }
+
+  private async triggerAlert(alert: any, currentPrice: number): Promise<void> {
+    try {
+      // Update alert
+      await prisma.alert.update({
+        where: { id: alert.id },
+        data: {
+          triggeredCount: { increment: 1 },
+          lastTriggeredAt: new Date(),
+        },
+      });
+
+      // Create alert log
+      await prisma.alertLog.create({
+        data: {
+          alertId: alert.id,
+          triggeredPrice: currentPrice,
+          triggeredAt: new Date(),
+        },
+      });
+
+      // Emit WebSocket event
+      io.emit('alert:triggered', {
+        alertId: alert.id,
+        ticker: alert.ticker,
+        price: currentPrice,
+      });
+
+      // Send notifications based on preferences
+      if (alert.notifyInApp) {
+        // In-app notification logic
+      }
+
+      // Note: Email notifications would be handled by a separate service
+    } catch (error) {
+      console.error('Error triggering alert:', error);
+    }
   }
 }
+
+export const alertService = new AlertService();

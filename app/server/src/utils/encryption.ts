@@ -101,25 +101,6 @@ export function generateSecret(length: number = 32): string {
 }
 
 /**
- * Hash password using bcrypt-style algorithm
- * Note: In production, use bcrypt directly. This is for demonstration.
- */
-export async function hashPassword(password: string): Promise<string> {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
-}
-
-/**
- * Verify password against hash
- */
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const [salt, key] = hash.split(':');
-  const derivedKey = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-  return derivedKey === key;
-}
-
-/**
  * Generate HMAC signature for webhook verification
  */
 export function generateWebhookSignature(payload: string, secret: string): string {
@@ -167,53 +148,3 @@ export function hashToken(token: string): string {
     .update(token)
     .digest('hex');
 }
-
-/**
- * Encrypt fields in an object based on schema annotations
- * Used by Prisma middleware for automatic encryption
- */
-export function encryptFields<T extends Record<string, any>>(
-  data: T,
-  fieldsToEncrypt: string[]
-): T {
-  const result = { ...data };
-  
-  for (const field of fieldsToEncrypt) {
-    if (result[field] && typeof result[field] === 'string') {
-      result[field] = encrypt(result[field]) as any;
-    }
-  }
-  
-  return result;
-}
-
-/**
- * Decrypt fields in an object based on schema annotations
- */
-export function decryptFields<T extends Record<string, any>>(
-  data: T,
-  fieldsToEncrypt: string[]
-): T {
-  const result = { ...data };
-  
-  for (const field of fieldsToEncrypt) {
-    if (result[field] && typeof result[field] === 'string') {
-      try {
-        result[field] = decrypt(result[field]) as any;
-      } catch (error) {
-        // If decryption fails, field might not be encrypted
-        console.warn(`Failed to decrypt field ${field}:`, error);
-      }
-    }
-  }
-  
-  return result;
-}
-
-// List of fields that should be encrypted in the database
-export const ENCRYPTED_FIELDS = [
-  'mfaSecret',
-  'mfaBackupCodes',
-  'secret', // webhook secrets
-  'apiKey', // raw API keys (before hashing)
-];

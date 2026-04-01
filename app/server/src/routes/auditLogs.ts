@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth';
+import { UserRole } from '@prisma/client';
 import { prisma } from '../config/database';
 import { AuditAction } from '@prisma/client';
 import { z } from 'zod';
@@ -21,7 +22,7 @@ const querySchema = z.object({
 router.get(
   '/',
   authenticate,
-  requireRole(UserRole.MANAGER),
+  requireRole('MANAGER' as UserRole),
   async (req, res) => {
     try {
       const query = querySchema.parse(req.query);
@@ -86,7 +87,7 @@ router.get(
 router.get(
   '/stats',
   authenticate,
-  requireRole(UserRole.MANAGER),
+  requireRole('MANAGER' as UserRole),
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
@@ -160,7 +161,7 @@ router.get(
 );
 
 // Get single audit log details
-router.get('/:id', authenticate, requireRole(UserRole.MANAGER), async (req, res) => {
+router.get('/:id', authenticate, requireRole('MANAGER' as UserRole), async (req, res) => {
   try {
     const { id } = req.params;
     

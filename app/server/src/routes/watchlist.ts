@@ -78,9 +78,6 @@ router.get('/:id', authenticate, async (req, res) => {
       },
       include: {
         items: {
-          include: {
-            stock: true,
-          },
           orderBy: { addedAt: 'desc' },
         },
       },
