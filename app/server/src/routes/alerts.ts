@@ -1,130 +1,193 @@
-import { Router, Response, NextFunction } from 'express';
-import { requireDatabase } from '../middleware/dbHealth';
-import { z } from 'zod';
+import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
 import { prisma } from '../config/database';
-import { authenticate, AuthRequest, requirePlan } from '../middleware/auth';
+import { AlertType, AlertCondition } from '@prisma/client';
+import { z } from 'zod';
 
 const router = Router();
 
-// Apply database health check
-router.use(requireDatabase);
-
-// Get user's alerts
-router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Get all alerts
+router.get('/', authenticate, async (req, res) => {
   try {
-    const alerts = await prisma.priceAlert.findMany({
-      where: { userId: req.user!.id },
+    const { ticker, isActive } = req.query;
+    
+    const where: any = {
+      organizationId: req.organization!.id,
+      deletedAt: null,
+    };
+    
+    if (ticker) where.ticker = ticker.toString().toUpperCase();
+    if (isActive !== undefined) where.isActive = isActive === 'true';
+    
+    const alerts = await prisma.alert.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     });
-
+    
     res.json(alerts);
   } catch (error) {
-    next(error);
+    console.error('Get alerts error:', error);
+    res.status(500).json({ error: 'Failed to get alerts' });
   }
 });
 
 // Create alert
-router.post(
-  '/',
-  authenticate,
-  requirePlan(['PRO', 'ELITE']),
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-      const schema = z.object({
-        ticker: z.string().min(1),
-        targetPrice: z.number().positive(),
-        condition: z.enum(['ABOVE', 'BELOW']),
-      });
-
-      const { ticker, targetPrice, condition } = schema.parse(req.body);
-
-      // Check alert limit for free users
-      const alertCount = await prisma.priceAlert.count({
-        where: { userId: req.user!.id, isActive: true },
-      });
-
-      if (req.user!.plan === 'FREE' && alertCount >= 3) {
-        return res.status(403).json({
-          error: 'Free plan limited to 3 active alerts. Upgrade to Pro for unlimited.',
-        });
-      }
-
-      const alert = await prisma.priceAlert.create({
-        data: {
-          userId: req.user!.id,
-          ticker: ticker.toUpperCase(),
-          targetPrice,
-          condition,
-        },
-      });
-
-      res.status(201).json(alert);
-    } catch (error) {
-      next(error);
+router.post('/', authenticate, async (req, res) => {
+  try {
+    const schema = z.object({
+      name: z.string().max(100).optional(),
+      ticker: z.string().min(1).max(10),
+      type: z.nativeEnum(AlertType),
+      condition: z.nativeEnum(AlertCondition),
+      value: z.number(),
+      notifyEmail: z.boolean().default(true),
+      notifyWebhook: z.boolean().default(false),
+      notifyInApp: z.boolean().default(true),
+    });
+    
+    const data = schema.parse(req.body);
+    
+    const alert = await prisma.alert.create({
+      data: {
+        name: data.name || `${data.ticker} ${data.condition} ${data.value}`,
+        ticker: data.ticker.toUpperCase(),
+        type: data.type,
+        condition: data.condition,
+        value: data.value,
+        notifyEmail: data.notifyEmail,
+        notifyWebhook: data.notifyWebhook,
+        notifyInApp: data.notifyInApp,
+        organizationId: req.organization!.id,
+        createdBy: req.user!.id,
+      },
+    });
+    
+    res.status(201).json(alert);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
     }
+    console.error('Create alert error:', error);
+    res.status(500).json({ error: 'Failed to create alert' });
   }
-);
+});
+
+// Get single alert
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const alert = await prisma.alert.findFirst({
+      where: {
+        id,
+        organizationId: req.organization!.id,
+        deletedAt: null,
+      },
+      include: {
+        logs: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
+    });
+    
+    if (!alert) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json(alert);
+  } catch (error) {
+    console.error('Get alert error:', error);
+    res.status(500).json({ error: 'Failed to get alert' });
+  }
+});
 
 // Update alert
-router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
+router.patch('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const schema = z.object({
+      name: z.string().max(100).optional(),
+      condition: z.nativeEnum(AlertCondition).optional(),
+      value: z.number().optional(),
       isActive: z.boolean().optional(),
-      targetPrice: z.number().positive().optional(),
+      notifyEmail: z.boolean().optional(),
+      notifyWebhook: z.boolean().optional(),
+      notifyInApp: z.boolean().optional(),
     });
-
-    const updates = schema.parse(req.body);
-
-    const alert = await prisma.priceAlert.update({
+    
+    const data = schema.parse(req.body);
+    
+    const alert = await prisma.alert.updateMany({
       where: {
         id,
-        userId: req.user!.id,
+        organizationId: req.organization!.id,
+        deletedAt: null,
       },
-      data: updates,
+      data,
     });
-
-    res.json(alert);
+    
+    if (alert.count === 0) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+    console.error('Update alert error:', error);
+    res.status(500).json({ error: 'Failed to update alert' });
   }
 });
 
 // Delete alert
-router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-
-    await prisma.priceAlert.delete({
+    
+    await prisma.alert.updateMany({
       where: {
         id,
-        userId: req.user!.id,
+        organizationId: req.organization!.id,
       },
+      data: { deletedAt: new Date() },
     });
-
-    res.json({ message: 'Alert deleted' });
+    
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    console.error('Delete alert error:', error);
+    res.status(500).json({ error: 'Failed to delete alert' });
   }
 });
 
-// Get alerts for a specific stock
-router.get('/stock/:ticker', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Toggle alert status
+router.post('/:id/toggle', authenticate, async (req, res) => {
   try {
-    const { ticker } = req.params;
-
-    const alerts = await prisma.priceAlert.findMany({
+    const { id } = req.params;
+    
+    const alert = await prisma.alert.findFirst({
       where: {
-        userId: req.user!.id,
-        ticker: ticker.toUpperCase(),
-        isActive: true,
+        id,
+        organizationId: req.organization!.id,
+        deletedAt: null,
       },
     });
-
-    res.json(alerts);
+    
+    if (!alert) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    
+    const updated = await prisma.alert.update({
+      where: { id },
+      data: { isActive: !alert.isActive },
+    });
+    
+    res.json(updated);
   } catch (error) {
-    next(error);
+    console.error('Toggle alert error:', error);
+    res.status(500).json({ error: 'Failed to toggle alert' });
   }
 });
 
-export { router as alertsRouter };
+export default router;

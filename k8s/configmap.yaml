@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alphaspectrum-config
+  namespace: alphaspectrum
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  JWT_ISSUER: "alphaspectrum"
+  JWT_AUDIENCE: "alphaspectrum-api"
+  JWT_EXPIRES_IN: "15m"
+  JWT_REFRESH_EXPIRES_IN: "7d"
+  BCRYPT_ROUNDS: "12"
+  MAX_LOGIN_ATTEMPTS: "5"
+  LOCKOUT_DURATION_MINUTES: "30"
+  PASSWORD_HISTORY_SIZE: "5"
+  MFA_ENABLED: "true"
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  WS_PING_INTERVAL: "30000"
+  WS_PING_TIMEOUT: "5000"
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  FEATURE_WEBHOOKS: "true"
+  FEATURE_API_KEYS: "true"
+  FEATURE_AUDIT_LOGS: "true"
+  FEATURE_BULK_OPERATIONS: "true"

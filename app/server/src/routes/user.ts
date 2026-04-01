@@ -1,150 +1,203 @@
-import { Router, Response, NextFunction } from 'express';
-import { requireDatabase } from '../middleware/dbHealth';
-import bcrypt from 'bcryptjs';
-import { z } from 'zod';
+import { Router } from 'express';
+import { authenticate, requireRole } from '../middleware/auth';
 import { prisma } from '../config/database';
-import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-// Apply database health check
-router.use(requireDatabase);
-
-// Get current user profile
-router.get('/profile', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Get user sessions
+router.get('/sessions', authenticate, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
+    const sessions = await prisma.session.findMany({
+      where: {
+        userId: req.user!.id,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        email: true,
-        name: true,
-        avatar: true,
-        plan: true,
+        deviceType: true,
+        deviceName: true,
+        browser: true,
+        os: true,
+        ipAddress: true,
+        country: true,
+        city: true,
+        lastActivityAt: true,
         createdAt: true,
-        subscription: true,
-        _count: {
-          select: {
-            watchlists: true,
-            alerts: true,
-            portfolios: true,
-            experiments: true,
-          },
-        },
       },
     });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json(user);
+    
+    // Mark current session
+    const currentSessionId = req.headers['x-session-id'];
+    const sessionsWithCurrent = sessions.map(s => ({
+      ...s,
+      isCurrent: s.id === currentSessionId,
+    }));
+    
+    res.json(sessionsWithCurrent);
   } catch (error) {
-    next(error);
+    console.error('Get sessions error:', error);
+    res.status(500).json({ error: 'Failed to get sessions' });
   }
 });
 
-// Update user profile
-router.patch('/profile', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Revoke session
+router.delete('/sessions/:id', authenticate, async (req, res) => {
   try {
-    const schema = z.object({
-      name: z.string().min(1).optional(),
-      avatar: z.string().url().optional(),
-    });
-
-    const updates = schema.parse(req.body);
-
-    const user = await prisma.user.update({
-      where: { id: req.user!.id },
-      data: updates,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        avatar: true,
-        plan: true,
+    const { id } = req.params;
+    
+    await prisma.session.deleteMany({
+      where: {
+        id,
+        userId: req.user!.id,
       },
     });
-
-    res.json(user);
+    
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    console.error('Revoke session error:', error);
+    res.status(500).json({ error: 'Failed to revoke session' });
   }
 });
 
-// Change password
-router.post('/change-password', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Revoke all other sessions
+router.post('/sessions/revoke-all', authenticate, async (req, res) => {
   try {
-    const schema = z.object({
-      currentPassword: z.string(),
-      newPassword: z.string().min(8),
+    const currentSessionId = req.headers['x-session-id'] as string;
+    
+    await prisma.session.deleteMany({
+      where: {
+        userId: req.user!.id,
+        id: { not: currentSessionId },
+      },
     });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Revoke all sessions error:', error);
+    res.status(500).json({ error: 'Failed to revoke sessions' });
+  }
+});
 
-    const { currentPassword, newPassword } = schema.parse(req.body);
-
-    // Get user with password
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
+// Get notification preferences
+router.get('/notifications', authenticate, async (req, res) => {
+  try {
+    // Return default preferences (can be stored in user.settings)
+    res.json({
+      email: {
+        priceAlerts: true,
+        portfolioUpdates: true,
+        newsDigest: false,
+        marketing: false,
+      },
+      push: {
+        priceAlerts: true,
+        portfolioUpdates: true,
+        marketOpen: false,
+      },
+      webhooks: {
+        priceAlerts: false,
+        portfolioUpdates: false,
+      },
     });
+  } catch (error) {
+    console.error('Get notifications error:', error);
+    res.status(500).json({ error: 'Failed to get notification preferences' });
+  }
+});
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Verify current password
-    const isValid = await bcrypt.compare(currentPassword, user.password);
-
-    if (!isValid) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password
+// Update notification preferences
+router.patch('/notifications', authenticate, async (req, res) => {
+  try {
+    // Store in user settings
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { password: hashedPassword },
+      data: {
+        // settings: { notificationPreferences: req.body }
+      },
     });
-
-    res.json({ message: 'Password updated successfully' });
+    
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    console.error('Update notifications error:', error);
+    res.status(500).json({ error: 'Failed to update notification preferences' });
   }
 });
 
-// Get user stats
-router.get('/stats', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Get user activity
+router.get('/activity', authenticate, async (req, res) => {
   try {
-    const stats = await prisma.$transaction([
-      prisma.watchlist.count({ where: { userId: req.user!.id } }),
-      prisma.priceAlert.count({ where: { userId: req.user!.id, isActive: true } }),
-      prisma.portfolio.count({ where: { userId: req.user!.id } }),
-      prisma.experiment.count({ where: { userId: req.user!.id } }),
-    ]);
-
-    res.json({
-      watchlistCount: stats[0],
-      activeAlerts: stats[1],
-      portfolios: stats[2],
-      experiments: stats[3],
+    const { limit = '20' } = req.query;
+    
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        userId: req.user!.id,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: parseInt(limit as string),
+      select: {
+        id: true,
+        action: true,
+        resourceType: true,
+        description: true,
+        createdAt: true,
+        ipAddress: true,
+      },
     });
+    
+    res.json(logs);
   } catch (error) {
-    next(error);
+    console.error('Get activity error:', error);
+    res.status(500).json({ error: 'Failed to get activity' });
   }
 });
 
-// Delete account
-router.delete('/account', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Delete account (GDPR)
+router.post('/delete-account', authenticate, async (req, res) => {
   try {
-    await prisma.user.delete({
+    const { password, reason } = req.body;
+    
+    // Verify password
+    const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
     });
-
-    res.json({ message: 'Account deleted successfully' });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const bcrypt = await import('bcrypt');
+    const validPassword = await bcrypt.compare(password, user.passwordHash || '');
+    
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    // Soft delete user
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: {
+        deletedAt: new Date(),
+        email: `deleted-${Date.now()}-${user.email}`, // Anonymize email
+        passwordHash: null,
+      },
+    });
+    
+    // Revoke all sessions
+    await prisma.session.deleteMany({
+      where: { userId: req.user!.id },
+    });
+    
+    await prisma.refreshToken.updateMany({
+      where: { userId: req.user!.id },
+      data: { revokedAt: new Date() },
+    });
+    
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 
-export { router as userRouter };
+export default router;

@@ -1,44 +1,96 @@
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
+import { ZodError } from 'zod';
+import { config } from '../config';
 
-export interface ApiError extends Error {
-  statusCode?: number;
+interface ErrorResponse {
+  error: string;
+  message?: string;
   code?: string;
+  details?: any;
+  stack?: string;
 }
 
-export const errorHandler = (
-  err: ApiError,
+export function errorHandler(
+  error: Error,
   req: Request,
   res: Response,
-  next: NextFunction
-) => {
-  console.error('Error:', err);
+  _next: NextFunction
+) {
+  console.error('Error:', error);
 
-  // Prisma errors
-  if (err.code?.startsWith('P')) {
-    switch (err.code) {
+  const response: ErrorResponse = {
+    error: 'Internal server error',
+  };
+
+  // Handle Zod validation errors
+  if (error instanceof ZodError) {
+    response.error = 'Validation error';
+    response.code = 'VALIDATION_ERROR';
+    response.details = error.errors.map(e => ({
+      path: e.path.join('.'),
+      message: e.message,
+    }));
+    return res.status(400).json(response);
+  }
+
+  // Handle Prisma errors
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    switch (error.code) {
       case 'P2002':
-        return res.status(409).json({
-          error: 'Resource already exists',
-          message: err.message,
-        });
+        response.error = 'Duplicate entry';
+        response.code = 'DUPLICATE_ERROR';
+        response.message = `A record with this ${error.meta?.target} already exists`;
+        return res.status(409).json(response);
+      
+      case 'P2003':
+        response.error = 'Foreign key constraint failed';
+        response.code = 'FOREIGN_KEY_ERROR';
+        return res.status(400).json(response);
+      
       case 'P2025':
-        return res.status(404).json({
-          error: 'Resource not found',
-          message: err.message,
-        });
+        response.error = 'Record not found';
+        response.code = 'NOT_FOUND';
+        return res.status(404).json(response);
+      
       default:
-        return res.status(500).json({
-          error: 'Database error',
-          message: err.message,
-        });
+        response.error = 'Database error';
+        response.code = error.code;
+        break;
     }
   }
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal server error';
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    response.error = 'Invalid data';
+    response.code = 'VALIDATION_ERROR';
+    return res.status(400).json(response);
+  }
 
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-};
+  // Handle JWT errors
+  if (error.name === 'JsonWebTokenError') {
+    response.error = 'Invalid token';
+    response.code = 'INVALID_TOKEN';
+    return res.status(401).json(response);
+  }
+
+  if (error.name === 'TokenExpiredError') {
+    response.error = 'Token expired';
+    response.code = 'TOKEN_EXPIRED';
+    return res.status(401).json(response);
+  }
+
+  // Handle specific error types
+  if (error.name === 'UnauthorizedError') {
+    response.error = 'Unauthorized';
+    response.code = 'UNAUTHORIZED';
+    return res.status(401).json(response);
+  }
+
+  // Include stack trace in development
+  if (config.isDevelopment) {
+    response.stack = error.stack;
+    response.message = error.message;
+  }
+
+  res.status(500).json(response);
+}

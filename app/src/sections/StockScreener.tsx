@@ -151,14 +151,24 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       return;
     }
     
+    // Don't search for very short queries (less than 2 chars) unless it's a known ticker
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery && trimmedQuery.length < 2) {
+      // Allow single char search but add a longer delay
+      const timer = setTimeout(() => {
+        performSearch(trimmedQuery);
+      }, 800); // Longer delay for single char to avoid rapid firing
+      return () => clearTimeout(timer);
+    }
+    
     const timer = setTimeout(() => {
-      if (searchQuery.trim()) {
-        performSearch(searchQuery.trim());
+      if (trimmedQuery) {
+        performSearch(trimmedQuery);
       } else if (stocks.length > 0) {
         // Only reload screener if we already had stocks (user cleared search)
         loadScreenerStocks();
       }
-    }, 300);
+    }, 500); // Increased debounce to 500ms
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -269,10 +279,15 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     try {
       // First, search for matching symbols
       const searchResponse = await stocksApi.search(query);
+      console.log('Search response for query "' + query + '":', searchResponse);
+      
       if (searchResponse.data && searchResponse.data.length > 0) {
         // Fetch quotes for the matching stocks (max 5 at a time to avoid API limits)
         const symbols = searchResponse.data.slice(0, 5).map(r => r.symbol);
+        console.log('Fetching batch quotes for symbols:', symbols);
+        
         const quotesResponse = await stocksApi.getBatchQuotes(symbols);
+        console.log('Batch quotes response:', quotesResponse);
         
         if (quotesResponse.data && Array.isArray(quotesResponse.data) && quotesResponse.data.length > 0) {
           const formattedStocks: StockResult[] = [];
@@ -320,16 +335,54 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
           }
           
           if (formattedStocks.length > 0) {
+            console.log('Setting stocks from API:', formattedStocks.length);
             setStocks(formattedStocks);
           } else {
+            console.log('No formatted stocks from API, falling back to mock');
             searchMockStocks(query);
           }
         } else {
-          // API returned empty - use mock search
-          searchMockStocks(query);
+          // API returned empty quotes - try individual quote fetches as fallback
+          console.log('Batch quotes empty, trying individual fetches for:', symbols.slice(0, 3));
+          const individualStocks: StockResult[] = [];
+          
+          // Try to fetch at least a few individual quotes
+          for (const symbol of symbols.slice(0, 3)) {
+            try {
+              const quoteResponse = await stocksApi.getQuote(symbol);
+              if (quoteResponse.data && quoteResponse.data.price > 0) {
+                const quote = quoteResponse.data;
+                const score = calculateScore(quote);
+                individualStocks.push({
+                  ticker: formatTickerForDisplay(quote.symbol),
+                  name: quote.name,
+                  price: quote.price,
+                  change: quote.change,
+                  changePercent: quote.changesPercentage,
+                  marketCap: quote.marketCap,
+                  score: score,
+                  signal: getSignalFromScore(score),
+                  volume: quote.volume,
+                  pe: quote.pe,
+                  sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
+                });
+              }
+            } catch (e) {
+              console.warn(`Individual quote fetch failed for ${symbol}:`, e);
+            }
+          }
+          
+          if (individualStocks.length > 0) {
+            console.log('Setting stocks from individual fetches:', individualStocks.length);
+            setStocks(individualStocks);
+          } else {
+            console.log('Individual fetches also failed, using mock data');
+            searchMockStocks(query);
+          }
         }
       } else {
-        // API returned empty - use mock search
+        // API search returned empty - use mock search
+        console.log('Search API returned no results, using mock data');
         searchMockStocks(query);
       }
     } catch (error) {

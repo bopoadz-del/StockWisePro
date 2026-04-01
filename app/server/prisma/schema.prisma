@@ -1,172 +1,844 @@
+// AlphaSpectrum Enterprise Schema
+// Multi-tenant SaaS architecture with enterprise features
+
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [pgcrypto, uuid_ossp]
 }
 
-model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String
-  name          String?
-  avatar        String?
-  plan          Plan      @default(FREE)
-  subscription  Subscription?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// ============================================
+// TENANT & ORGANIZATION MODELS
+// ============================================
+
+model Organization {
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  description       String?
+  logoUrl           String?
+  website           String?
+  
+  // Subscription & Billing
+  plan              PlanType @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  subscriptionExpiresAt DateTime?
+  stripeCustomerId  String?
+  stripeSubscriptionId String?
+  
+  // Quotas & Limits
+  maxUsers          Int      @default(1)
+  maxApiCalls       Int      @default(1000)
+  maxWebhooks       Int      @default(0)
+  maxTeams          Int      @default(0)
+  storageQuota      Int      @default(100) // MB
+  
+  // Feature Flags
+  features          Json     @default("{}")
+  settings          Json     @default("{}")
+  
+  // Security
+  requireMfa        Boolean  @default(false)
+  allowedEmailDomains String[]
+  ipWhitelist       String[]
+  sessionTimeout    Int      @default(480) // minutes
+  passwordPolicy    Json     @default("{}")
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
   
   // Relations
-  watchlists    Watchlist[]
-  alerts        PriceAlert[]
-  portfolios    Portfolio[]
-  experiments   Experiment[]
-  sessions      Session[]
+  users             User[]
+  teams             Team[]
+  apiKeys           ApiKey[]
+  webhooks          Webhook[]
+  auditLogs         AuditLog[]
+  watchlists        Watchlist[]
+  portfolios        Portfolio[]
+  alerts            Alert[]
+  experiments       Experiment[]
   
+  @@index([slug])
+  @@index([plan])
+  @@index([subscriptionStatus])
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+enum PlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  SUSPENDED
+}
+
+// ============================================
+// USER & AUTHENTICATION MODELS
+// ============================================
+
+model User {
+  id                String   @id @default(uuid())
+  email             String
+  emailVerified     Boolean  @default(false)
+  passwordHash      String?
+  
+  // Profile
+  firstName         String?
+  lastName          String?
+  avatarUrl         String?
+  timezone          String   @default("UTC")
+  locale            String   @default("en-US")
+  
+  // Multi-tenancy
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Role & Permissions
+  role              UserRole @default(MEMBER)
+  permissions       String[] // Explicit permissions beyond role
+  
+  // MFA
+  mfaEnabled        Boolean  @default(false)
+  mfaSecret         String?  @encrypted
+  mfaBackupCodes    String[] @encrypted
+  
+  // Security
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+  failedLoginAttempts Int    @default(0)
+  lockedUntil       DateTime?
+  passwordChangedAt DateTime @default(now())
+  passwordHistory   String[]
+  
+  // Session Management
+  sessions          Session[]
+  refreshTokens     RefreshToken[]
+  
+  // Status
+  status            UserStatus @default(ACTIVE)
+  invitedBy         String?
+  invitedAt         DateTime?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  auditLogs         AuditLog[]
+  alertLogs         AlertLog[]
+  apiKeyLogs        ApiKeyLog[]
+  
+  @@unique([email, organizationId])
+  @@index([organizationId])
+  @@index([email])
+  @@index([status])
+  @@index([deletedAt])
   @@map("users")
 }
 
+enum UserRole {
+  OWNER           // Full organization access
+  ADMIN           // Can manage users and settings
+  MANAGER         // Can manage team and view reports
+  ANALYST         // Can create/edit data
+  MEMBER          // Standard user
+  VIEWER          // Read-only access
+  API             // API-only access
+}
+
+enum UserStatus {
+  PENDING         // Invited, not yet accepted
+  ACTIVE
+  INACTIVE        // Deactivated by admin
+  SUSPENDED       // Suspended for violation
+}
+
 model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token             String   @unique
+  expiresAt         DateTime
   
+  // Device Info
+  deviceId          String?
+  deviceType        String?
+  deviceName        String?
+  browser           String?
+  os                String?
+  ipAddress         String?
+  
+  // Location
+  country           String?
+  city              String?
+  
+  lastActivityAt    DateTime @default(now())
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
   @@map("sessions")
 }
 
-model Subscription {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  plan      Plan
-  status    SubscriptionStatus @default(ACTIVE)
-  stripeCustomerId    String?
-  stripeSubscriptionId String?
-  currentPeriodStart  DateTime?
-  currentPeriodEnd    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model RefreshToken {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token             String   @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByToken   String?
   
-  @@map("subscriptions")
+  ipAddress         String?
+  userAgent         String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
 }
 
+// ============================================
+// TEAM MANAGEMENT
+// ============================================
+
+model Team {
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
+  
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  members           TeamMember[]
+  watchlists        Watchlist[]
+  portfolios        Portfolio[]
+  
+  @@index([organizationId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id                String   @id @default(uuid())
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  userId            String
+  
+  role              TeamRole @default(MEMBER)
+  
+  joinedAt          DateTime @default(now())
+  
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+enum TeamRole {
+  LEAD
+  MEMBER
+}
+
+// ============================================
+// API KEY MANAGEMENT
+// ============================================
+
+model ApiKey {
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
+  
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy         String
+  
+  // Key (hashed for storage)
+  keyHash           String   @unique
+  keyPrefix         String   // First 8 chars for display
+  
+  // Permissions
+  permissions       String[] // Specific permissions this key has
+  allowedIps        String[] // IP whitelist
+  
+  // Quotas
+  rateLimit         Int      @default(1000) // per hour
+  
+  // Usage
+  lastUsedAt        DateTime?
+  usageCount        Int      @default(0)
+  
+  // Status
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  revokedBy         String?
+  revokedReason     String?
+  
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  logs              ApiKeyLog[]
+  
+  @@index([organizationId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+model ApiKeyLog {
+  id                String   @id @default(uuid())
+  apiKeyId          String
+  apiKey            ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id])
+  
+  endpoint          String
+  method            String
+  statusCode        Int
+  responseTime      Int      // milliseconds
+  ipAddress         String
+  userAgent         String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@map("api_key_logs")
+}
+
+// ============================================
+// WEBHOOK MANAGEMENT
+// ============================================
+
+model Webhook {
+  id                String   @id @default(uuid())
+  name              String
+  url               String
+  description       String?
+  
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy         String
+  
+  // Security
+  secret            String   @encrypted // For HMAC signature
+  
+  // Events
+  events            String[] // Event types to subscribe to
+  
+  // Delivery settings
+  retryPolicy       Json     @default("{}")
+  
+  // Status
+  isActive          Boolean  @default(true)
+  lastSuccessAt     DateTime?
+  lastFailureAt     DateTime?
+  failureCount      Int      @default(0)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  deliveries        WebhookDelivery[]
+  
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id                String   @id @default(uuid())
+  webhookId         String
+  webhook           Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  
+  eventType         String
+  payload           Json
+  
+  // Request details
+  requestHeaders    Json
+  requestBody       String
+  
+  // Response details
+  responseStatus    Int?
+  responseHeaders   Json?
+  responseBody      String?
+  responseTime      Int      // milliseconds
+  
+  // Delivery status
+  status            DeliveryStatus
+  attemptCount      Int      @default(1)
+  errorMessage      String?
+  
+  // Retry
+  nextRetryAt       DateTime?
+  
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+  
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  RETRYING
+}
+
+// ============================================
+// AUDIT LOGGING
+// ============================================
+
+model AuditLog {
+  id                String   @id @default(uuid())
+  
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id])
+  
+  // Action details
+  action            AuditAction
+  resourceType      String   // e.g., "user", "portfolio", "api_key"
+  resourceId        String?
+  
+  // Context
+  description       String
+  metadata          Json?
+  
+  // Request context
+  ipAddress         String?
+  userAgent         String?
+  requestId         String?
+  
+  // Before/After for changes
+  beforeState       Json?
+  afterState        Json?
+  
+  // Timestamp
+  createdAt         DateTime @default(now())
+  
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  // Auth
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_CHANGED
+  MFA_ENABLED
+  MFA_DISABLED
+  TOKEN_REFRESHED
+  SESSION_REVOKED
+  
+  // User Management
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  USER_INVITED
+  USER_ROLE_CHANGED
+  USER_SUSPENDED
+  USER_ACTIVATED
+  
+  // Organization
+  ORG_CREATED
+  ORG_UPDATED
+  ORG_SETTINGS_CHANGED
+  PLAN_CHANGED
+  
+  // API Keys
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  API_KEY_USED
+  
+  // Webhooks
+  WEBHOOK_CREATED
+  WEBHOOK_UPDATED
+  WEBHOOK_DELETED
+  WEBHOOK_DELIVERED
+  WEBHOOK_FAILED
+  
+  // Data Access
+  DATA_EXPORTED
+  DATA_IMPORTED
+  DATA_DELETED
+  
+  // Security
+  PERMISSION_DENIED
+  RATE_LIMITED
+  IP_BLOCKED
+}
+
+// ============================================
+// STOCK & MARKET DATA
+// ============================================
+
+model Stock {
+  ticker            String   @id
+  name              String
+  exchange          String?
+  sector            String?
+  industry          String?
+  
+  // Metadata
+  marketCap         BigInt?
+  website           String?
+  description       String?
+  logoUrl           String?
+  
+  // Cached data
+  cachedPrice       Decimal?
+  cachedChange      Decimal?
+  cachedChangePercent Decimal?
+  cachedVolume      BigInt?
+  cachedAt          DateTime?
+  
+  // Historical data references
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([sector])
+  @@index([cachedAt])
+  @@map("stocks")
+}
+
+model StockPrice {
+  id                String   @id @default(uuid())
+  ticker            String
+  
+  price             Decimal
+  change            Decimal
+  changePercent     Decimal
+  volume            BigInt
+  open              Decimal?
+  high              Decimal?
+  low               Decimal?
+  close             Decimal?
+  
+  timestamp         DateTime @default(now())
+  
+  @@index([ticker])
+  @@index([timestamp])
+  @@map("stock_prices")
+}
+
+// ============================================
+// WATCHLIST (Organization-scoped)
+// ============================================
+
 model Watchlist {
-  id        String   @id @default(uuid())
-  userId    String
-  ticker    String
-  name      String
-  addedAt   DateTime @default(now())
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
   
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
-  @@unique([userId, ticker])
+  teamId            String?
+  team              Team?    @relation(fields: [teamId], references: [id])
+  
+  createdBy         String
+  isDefault         Boolean  @default(false)
+  isPublic          Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  items             WatchlistItem[]
+  
+  @@index([organizationId])
+  @@index([teamId])
   @@map("watchlists")
 }
 
-model PriceAlert {
-  id            String   @id @default(uuid())
-  userId        String
-  ticker        String
-  targetPrice   Float
-  condition     AlertCondition
-  isActive      Boolean  @default(true)
-  wasTriggered  Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  triggeredAt   DateTime?
+model WatchlistItem {
+  id                String   @id @default(uuid())
+  watchlistId       String
+  watchlist         Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
   
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticker            String
+  notes             String?
   
-  @@map("price_alerts")
+  addedBy           String
+  addedAt           DateTime @default(now())
+  
+  @@unique([watchlistId, ticker])
+  @@index([watchlistId])
+  @@map("watchlist_items")
 }
 
+// ============================================
+// PORTFOLIO (Organization-scoped)
+// ============================================
+
 model Portfolio {
-  id            String   @id @default(uuid())
-  userId        String
-  name          String
-  investorId    String?
-  budget        Float
-  holdings      PortfolioHolding[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
   
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
+  teamId            String?
+  team              Team?    @relation(fields: [teamId], references: [id])
+  
+  createdBy         String
+  isDefault         Boolean  @default(false)
+  
+  // Mimicry
+  mimicInvestor     String?  // e.g., "warren_buffett"
+  mimicAllocation   Json?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  holdings          PortfolioHolding[]
+  transactions      PortfolioTransaction[]
+  
+  @@index([organizationId])
+  @@index([teamId])
   @@map("portfolios")
 }
 
 model PortfolioHolding {
-  id            String   @id @default(uuid())
-  portfolioId   String
-  ticker        String
-  name          String
-  shares        Int
-  price         Float
-  allocation    Float
-  value         Float
+  id                String   @id @default(uuid())
+  portfolioId       String
+  portfolio         Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   
-  portfolio     Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  ticker            String
+  shares            Decimal
+  avgCostBasis      Decimal
   
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([portfolioId, ticker])
+  @@index([portfolioId])
   @@map("portfolio_holdings")
 }
 
-model Experiment {
-  id            String   @id @default(uuid())
-  userId        String
-  name          String
-  formula       String
-  description   String?
-  results       Json?
-  createdAt     DateTime @default(now())
+model PortfolioTransaction {
+  id                String   @id @default(uuid())
+  portfolioId       String
+  portfolio         Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticker            String
+  type              TransactionType
+  shares            Decimal
+  price             Decimal
+  totalAmount       Decimal
+  fees              Decimal   @default(0)
   
-  @@map("experiments")
+  executedAt        DateTime
+  notes             String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([portfolioId])
+  @@index([ticker])
+  @@map("portfolio_transactions")
 }
 
-model CachedStock {
-  ticker        String   @id
-  name          String
-  price         Float
-  change        Float
-  changePercent Float
-  marketCap     Float?
-  peRatio       Float?
-  pbRatio       Float?
-  psRatio       Float?
-  volume        Float?
-  avgVolume     Float?
-  fiftyTwoWeekHigh Float?
-  fiftyTwoWeekLow  Float?
-  sector        String?
-  score         Int      @default(50)
-  signal        String   @default("hold")
-  sparklineData Json?
-  lastUpdated   DateTime @default(now())
+enum TransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  SPLIT
+  MERGER
+}
+
+// ============================================
+// ALERTS (Organization-scoped)
+// ============================================
+
+model Alert {
+  id                String   @id @default(uuid())
+  name              String?
   
-  @@map("cached_stocks")
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy         String
+  
+  ticker            String
+  type              AlertType
+  condition         AlertCondition
+  value             Decimal
+  
+  // Notification
+  notifyEmail       Boolean  @default(true)
+  notifyWebhook     Boolean  @default(false)
+  notifyInApp       Boolean  @default(true)
+  
+  // Status
+  isActive          Boolean  @default(true)
+  triggeredCount    Int      @default(0)
+  lastTriggeredAt   DateTime?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  // Relations
+  logs              AlertLog[]
+  
+  @@index([organizationId])
+  @@index([ticker])
+  @@index([isActive])
+  @@map("alerts")
 }
 
-enum Plan {
-  FREE
-  PRO
-  ELITE
-}
-
-enum SubscriptionStatus {
-  ACTIVE
-  CANCELED
-  PAST_DUE
-  UNPAID
+enum AlertType {
+  PRICE
+  PERCENT_CHANGE
+  VOLUME
+  MARKET_CAP
 }
 
 enum AlertCondition {
   ABOVE
   BELOW
+  EQUALS
+  PERCENT_UP
+  PERCENT_DOWN
+}
+
+model AlertLog {
+  id                String   @id @default(uuid())
+  alertId           String
+  alert             Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id])
+  
+  triggeredPrice    Decimal
+  triggeredAt       DateTime
+  notified          Boolean  @default(false)
+  notificationMethod String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([alertId])
+  @@index([createdAt])
+  @@map("alert_logs")
+}
+
+// ============================================
+// EXPERIMENTS (Organization-scoped)
+// ============================================
+
+model Experiment {
+  id                String   @id @default(uuid())
+  name              String
+  description       String?
+  
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  createdBy         String
+  
+  // Formula configuration
+  formula           Json     // Scoring formula configuration
+  backtestConfig    Json?    // Backtest parameters
+  backtestResults   Json?    // Cached backtest results
+  
+  isPublic          Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  
+  @@index([organizationId])
+  @@map("experiments")
+}
+
+// ============================================
+// RATE LIMITING (Redis-backed)
+// ============================================
+
+// This is managed via Redis, but we track historical usage
+
+model UsageMetrics {
+  id                String   @id @default(uuid())
+  
+  organizationId    String
+  date              DateTime @default(now())
+  
+  apiCalls          Int      @default(0)
+  webhookCalls      Int      @default(0)
+  emailNotifications Int     @default(0)
+  storageUsed       BigInt   @default(0)
+  
+  createdAt         DateTime @default(now())
+  
+  @@unique([organizationId, date])
+  @@index([organizationId])
+  @@map("usage_metrics")
+}
+
+// ============================================
+// DATA RETENTION & ARCHIVE
+// ============================================
+
+model DataRetentionPolicy {
+  id                String   @id @default(uuid())
+  organizationId    String   @unique
+  
+  // Retention periods (days)
+  auditLogRetention     Int  @default(2555) // 7 years
+  apiLogRetention       Int  @default(90)
+  webhookLogRetention   Int  @default(30)
+  alertLogRetention     Int  @default(365)
+  sessionRetention      Int  @default(30)
+  
+  autoDeleteEnabled     Boolean @default(false)
+  lastCleanupAt         DateTime?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@map("data_retention_policies")
 }

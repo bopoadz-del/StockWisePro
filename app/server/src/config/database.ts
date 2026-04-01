@@ -1,18 +1,25 @@
 import { PrismaClient } from '@prisma/client';
+import { config } from './index';
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+// Prisma client singleton
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' 
+export const prisma = globalForPrisma.prisma || new PrismaClient({
+  log: config.isDevelopment 
     ? ['query', 'info', 'warn', 'error']
     : ['error'],
+  datasources: {
+    db: {
+      url: config.database.url,
+    },
+  },
 });
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+if (config.isDevelopment) {
+  globalForPrisma.prisma = prisma;
+}
 
-// Connection health check
+// Check database connection
 export async function checkDatabaseConnection(): Promise<boolean> {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -23,7 +30,27 @@ export async function checkDatabaseConnection(): Promise<boolean> {
   }
 }
 
-// Graceful shutdown
+// Disconnect from database
 export async function disconnectDatabase(): Promise<void> {
   await prisma.$disconnect();
 }
+
+// Prisma middleware for soft deletes and audit logging
+prisma.$use(async (params, next) => {
+  // Soft delete middleware
+  if (params.action === 'delete') {
+    params.action = 'update';
+    params.args.data = { deletedAt: new Date() };
+  }
+  
+  if (params.action === 'deleteMany') {
+    params.action = 'updateMany';
+    if (params.args.data) {
+      params.args.data.deletedAt = new Date();
+    } else {
+      params.args.data = { deletedAt: new Date() };
+    }
+  }
+
+  return next(params);
+});
