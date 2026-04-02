@@ -28,6 +28,8 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: ALPHA_VANTAGE_API_KEY
