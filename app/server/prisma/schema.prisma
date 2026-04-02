@@ -103,8 +103,8 @@ model User {
   locale            String   @default("en-US")
   
   // Multi-tenancy
-  organizationId    String?
-  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
   // Role & Permissions
   role              UserRole @default(MEMBER)
@@ -142,7 +142,7 @@ model User {
   alertLogs         AlertLog[]
   apiKeyLogs        ApiKeyLog[]
   
-  // @@unique([email, organizationId])  // Temporarily disabled for migration - re-enable after backfilling organizationId
+  @@unique([email, organizationId])
   @@index([organizationId])
   @@index([email])
   @@index([status])
