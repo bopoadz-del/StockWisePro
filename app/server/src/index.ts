@@ -22,6 +22,7 @@ import auditLogsRouter from './routes/auditLogs';
 import experimentRouter from './routes/experiments';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
+import scoringRouter from './routes/scoring';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -186,6 +187,7 @@ app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/experiments', experimentRouter);
 app.use('/api/user', userRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/score', scoringRouter);
 
 // Analytics endpoint (accepts and discards - frontend analytics are local-only)
 app.post('/api/analytics', (req, res) => {
@@ -233,6 +235,7 @@ httpServer.listen(config.port, () => {
 ║   Port: ${config.port.toString().padEnd(43)}║
 ║   Database: ${(config.database.url ? 'Connected' : 'Not Configured').padEnd(36)}║
 ║   WebSocket: Ready                                     ║
+║   OpenBox Scoring: v2.0 Enabled                        ║
 ║                                                        ║
 ║   Health Check: http://localhost:${config.port}/health   ${' '.repeat(config.port.toString().length === 4 ? 1 : 0)}║
 ║                                                        ║
