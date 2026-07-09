@@ -85,6 +85,7 @@ async function getQuoteLocal(ticker: string): Promise<{ price: number; name?: st
     if (!quote) return null;
     return {
       price: quote.price,
+      name: quote.name,
       change: quote.change,
     };
   } catch {
@@ -96,8 +97,7 @@ async function getQuoteLocal(ticker: string): Promise<{ price: number; name?: st
 
 async function searchTicker(query: string): Promise<string | null> {
   try {
-    // Use Twelve Data symbol search
-    const results = await twelveDataService.searchSymbols(query);
+    const results = await twelveDataService.search(query);
     if (results && results.length > 0) {
       return results[0].symbol.toUpperCase();
     }
