@@ -23,6 +23,7 @@ import experimentRouter from './routes/experiments';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
 import scoringRouter from './routes/scoring';
+import whatsappRouter from './whatsapp';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -119,6 +120,7 @@ app.get('/health', async (req, res) => {
     services: {
       database: dbHealthy ? 'connected' : 'disconnected',
       websocket: 'ready',
+      whatsapp: 'ready',
     },
   });
 });
@@ -127,7 +129,6 @@ app.get('/health', async (req, res) => {
 app.get('/health/deep', async (req, res) => {
   const dbHealthy = await checkDatabaseConnection();
   
-  // Check external APIs
   const apiStatus: Record<string, string> = {};
   
   if (config.apis.alphaVantage.key) {
@@ -150,6 +151,7 @@ app.get('/health/deep', async (req, res) => {
     services: {
       database: dbHealthy ? 'connected' : 'disconnected',
       websocket: 'ready',
+      whatsapp: 'ready',
       externalApis: apiStatus,
     },
   });
@@ -161,6 +163,8 @@ app.get('/', (req, res) => {
     name: 'AlphaSpectrum Enterprise API',
     version: '2.0.0',
     status: 'running',
+    scoring: 'OpenBox v2.0',
+    whatsapp: 'enabled',
     documentation: '/api/docs',
     health: '/health',
   });
@@ -168,7 +172,7 @@ app.get('/', (req, res) => {
 
 // Apply rate limiting to API routes
 const apiRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   maxRequests: 100,
 });
 
@@ -189,6 +193,9 @@ app.use('/api/user', userRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/score', scoringRouter);
 
+// WhatsApp Twilio webhook (no rate limit — Twilio handles retries)
+app.use('/whatsapp', whatsappRouter);
+
 // Analytics endpoint (accepts and discards - frontend analytics are local-only)
 app.post('/api/analytics', (req, res) => {
   res.status(200).json({ received: true });
@@ -201,24 +208,20 @@ app.use(errorHandler);
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
-  // Subscribe to stock price updates
   socket.on('subscribe:stocks', (tickers: string[]) => {
     console.log(`Client ${socket.id} subscribed to:`, tickers);
     tickers.forEach(ticker => socket.join(`stock:${ticker}`));
   });
 
-  // Unsubscribe from stock price updates
   socket.on('unsubscribe:stocks', (tickers: string[]) => {
     console.log(`Client ${socket.id} unsubscribed from:`, tickers);
     tickers.forEach(ticker => socket.leave(`stock:${ticker}`));
   });
 
-  // Handle disconnect
   socket.on('disconnect', (reason) => {
     console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
   });
 
-  // Ping-pong for connection health
   socket.on('ping', () => {
     socket.emit('pong');
   });
@@ -236,8 +239,11 @@ httpServer.listen(config.port, () => {
 ║   Database: ${(config.database.url ? 'Connected' : 'Not Configured').padEnd(36)}║
 ║   WebSocket: Ready                                     ║
 ║   OpenBox Scoring: v2.0 Enabled                        ║
+║   WhatsApp Bot: Enabled                                ║
 ║                                                        ║
-║   Health Check: http://localhost:${config.port}/health   ${' '.repeat(config.port.toString().length === 4 ? 1 : 0)}║
+║   Health:  http://localhost:${config.port}/health        ║
+║   WhatsApp: POST /whatsapp                             ║
+║   Scoring:  POST /api/score                            ║
 ║                                                        ║
 ╚════════════════════════════════════════════════════════╝
   `);
@@ -247,24 +253,18 @@ httpServer.listen(config.port, () => {
 const shutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
   
-  // Close WebSocket connections
   io.close(() => {
     console.log('WebSocket server closed');
   });
   
-  // Close HTTP server
   httpServer.close(async () => {
     console.log('HTTP server closed');
-    
-    // Disconnect from database
     await disconnectDatabase();
     console.log('Database disconnected');
-    
     console.log('Graceful shutdown complete');
     process.exit(0);
   });
   
-  // Force shutdown after 30 seconds
   setTimeout(() => {
     console.error('Forced shutdown after timeout');
     process.exit(1);
@@ -274,7 +274,6 @@ const shutdown = async (signal: string) => {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-// Handle uncaught errors
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   shutdown('UNCAUGHT_EXCEPTION');
