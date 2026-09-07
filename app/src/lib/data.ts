@@ -1,4 +1,13 @@
 import type { Stock, Investor, PricingPlan, Testimonial, FAQItem, MarketIndex, ScoringCriterion } from '@/types';
+import { getInvestorHoldings } from '@shared/investorAllocations';
+
+function bookHoldings(investorId: string) {
+  return getInvestorHoldings(investorId).map((holding) => ({
+    ticker: holding.ticker,
+    name: holding.name,
+    allocation: Math.round(holding.weight * 1000) / 10,
+  }));
+}
 
 export const mockStocks: Stock[] = [
   {
@@ -250,13 +259,7 @@ export const investors: Investor[] = [
     title: 'The Oracle of Omaha',
     description: 'Legendary value investor known for long-term holdings in quality companies with durable competitive advantages.',
     strategy: 'Value investing with focus on companies with strong moats, consistent earnings, and reasonable valuations.',
-    topHoldings: [
-      { ticker: 'AAPL', name: 'Apple Inc.', allocation: 50.2 },
-      { ticker: 'BAC', name: 'Bank of America', allocation: 8.9 },
-      { ticker: 'AXP', name: 'American Express', allocation: 7.2 },
-      { ticker: 'KO', name: 'Coca-Cola', allocation: 6.8 },
-      { ticker: 'CVX', name: 'Chevron', allocation: 5.4 },
-    ],
+    topHoldings: bookHoldings('buffett'),
     allocation: {
       'Technology': 52,
       'Financials': 25,
@@ -272,13 +275,7 @@ export const investors: Investor[] = [
     title: 'Founder of Bridgewater',
     description: 'Creator of the All Weather portfolio strategy focused on risk parity and diversification across asset classes.',
     strategy: 'Risk parity approach with balanced allocation across stocks, bonds, commodities, and gold.',
-    topHoldings: [
-      { ticker: 'SPY', name: 'SPDR S&P 500 ETF', allocation: 30 },
-      { ticker: 'TLT', name: 'iShares 20+ Year Treasury', allocation: 40 },
-      { ticker: 'GLD', name: 'SPDR Gold Trust', allocation: 7.5 },
-      { ticker: 'DBC', name: 'Invesco DB Commodity Tracking', allocation: 7.5 },
-      { ticker: 'VGIT', name: 'Vanguard Intermediate Treasury', allocation: 15 },
-    ],
+    topHoldings: bookHoldings('dalio'),
     allocation: {
       'US Stocks': 30,
       'Long-term Bonds': 40,
@@ -294,13 +291,7 @@ export const investors: Investor[] = [
     title: 'ARK Invest CEO',
     description: 'Innovation-focused investor betting on disruptive technologies that will shape the future.',
     strategy: 'High-growth innovation investing in genomics, AI, robotics, energy storage, and blockchain.',
-    topHoldings: [
-      { ticker: 'TSLA', name: 'Tesla Inc.', allocation: 9.8 },
-      { ticker: 'COIN', name: 'Coinbase Global', allocation: 7.2 },
-      { ticker: 'ROKU', name: 'Roku Inc.', allocation: 6.5 },
-      { ticker: 'SQ', name: 'Block Inc.', allocation: 5.8 },
-      { ticker: 'ZM', name: 'Zoom Video', allocation: 5.2 },
-    ],
+    topHoldings: bookHoldings('wood'),
     allocation: {
       'Technology': 45,
       'Healthcare': 25,
@@ -316,13 +307,7 @@ export const investors: Investor[] = [
     title: 'Fidelity Magellan',
     description: 'Famous for "invest in what you know" philosophy and finding growth at reasonable prices.',
     strategy: 'GARP (Growth at Reasonable Price) with emphasis on understanding the business.',
-    topHoldings: [
-      { ticker: 'PG', name: 'Procter & Gamble', allocation: 12 },
-      { ticker: 'WMT', name: 'Walmart Inc.', allocation: 10 },
-      { ticker: 'HD', name: 'Home Depot', allocation: 9 },
-      { ticker: 'MCD', name: "McDonald's", allocation: 8 },
-      { ticker: 'NKE', name: 'Nike Inc.', allocation: 7 },
-    ],
+    topHoldings: bookHoldings('lynch'),
     allocation: {
       'Consumer Defensive': 35,
       'Consumer Cyclical': 25,
@@ -338,13 +323,7 @@ export const investors: Investor[] = [
     title: 'Father of Value Investing',
     description: 'Pioneer of value investing with emphasis on margin of safety and fundamental analysis.',
     strategy: 'Deep value investing with strict criteria for low P/E, low P/B, and strong balance sheets.',
-    topHoldings: [
-      { ticker: 'BRK.B', name: 'Berkshire Hathaway', allocation: 15 },
-      { ticker: 'JPM', name: 'JPMorgan Chase', allocation: 12 },
-      { ticker: 'XOM', name: 'Exxon Mobil', allocation: 10 },
-      { ticker: 'CVX', name: 'Chevron', allocation: 9 },
-      { ticker: 'INTC', name: 'Intel Corp', allocation: 8 },
-    ],
+    topHoldings: bookHoldings('graham'),
     allocation: {
       'Financials': 30,
       'Energy': 25,
@@ -360,13 +339,7 @@ export const investors: Investor[] = [
     title: 'The Man Who Broke the Bank',
     description: 'Legendary hedge fund manager known for macroeconomic trades and the theory of reflexivity.',
     strategy: 'Global macro investing based on economic trends and currency movements.',
-    topHoldings: [
-      { ticker: 'QQQ', name: 'Invesco QQQ Trust', allocation: 18 },
-      { ticker: 'SPY', name: 'SPDR S&P 500 ETF', allocation: 15 },
-      { ticker: 'IWM', name: 'iShares Russell 2000', allocation: 12 },
-      { ticker: 'EEM', name: 'iShares MSCI Emerging Markets', allocation: 10 },
-      { ticker: 'TLT', name: 'iShares 20+ Year Treasury', allocation: 8 },
-    ],
+    topHoldings: bookHoldings('soros'),
     allocation: {
       'US Large Cap': 35,
       'US Small Cap': 15,
@@ -382,13 +355,7 @@ export const investors: Investor[] = [
     title: 'Duquesne Capital',
     description: 'One of the most successful hedge fund managers with 30 years of positive returns.',
     strategy: 'Concentrated bets on high-conviction ideas with flexible long/short approach.',
-    topHoldings: [
-      { ticker: 'NVDA', name: 'NVIDIA Corp', allocation: 14 },
-      { ticker: 'MSFT', name: 'Microsoft', allocation: 12 },
-      { ticker: 'GOOGL', name: 'Alphabet', allocation: 10 },
-      { ticker: 'AMZN', name: 'Amazon', allocation: 9 },
-      { ticker: 'META', name: 'Meta Platforms', allocation: 8 },
-    ],
+    topHoldings: bookHoldings('druckenmiller'),
     allocation: {
       'Technology': 55,
       'Communication': 20,
@@ -403,13 +370,7 @@ export const investors: Investor[] = [
     title: 'Pershing Square',
     description: 'Activist investor known for concentrated bets and pushing for corporate change.',
     strategy: 'High-conviction, concentrated investments in quality businesses with moats.',
-    topHoldings: [
-      { ticker: 'HLT', name: 'Hilton Worldwide', allocation: 18 },
-      { ticker: 'CMG', name: 'Chipotle Mexican Grill', allocation: 16 },
-      { ticker: 'QSR', name: 'Restaurant Brands', allocation: 14 },
-      { ticker: 'LOW', name: "Lowe's Companies", allocation: 12 },
-      { ticker: 'GOOGL', name: 'Alphabet', allocation: 10 },
-    ],
+    topHoldings: bookHoldings('ackman'),
     allocation: {
       'Consumer Discretionary': 50,
       'Technology': 20,
@@ -424,13 +385,7 @@ export const investors: Investor[] = [
     title: 'Global Value Pioneer',
     description: 'Pioneer of global investing who sought value in overlooked international markets.',
     strategy: 'Contrarian global value investing in unpopular markets and sectors.',
-    topHoldings: [
-      { ticker: 'VEA', name: 'Vanguard FTSE Developed Markets', allocation: 25 },
-      { ticker: 'VWO', name: 'Vanguard FTSE Emerging Markets', allocation: 20 },
-      { ticker: 'IEFA', name: 'iShares Core MSCI EAFE', allocation: 18 },
-      { ticker: 'SPY', name: 'SPDR S&P 500 ETF', allocation: 15 },
-      { ticker: 'VXUS', name: 'Vanguard Total International Stock', allocation: 12 },
-    ],
+    topHoldings: bookHoldings('templeton'),
     allocation: {
       'International Developed': 45,
       'Emerging Markets': 25,
@@ -445,13 +400,7 @@ export const investors: Investor[] = [
     title: 'Oaktree Capital',
     description: 'Credit investor known for his memos on market cycles and distressed debt investing.',
     strategy: 'Contrarian credit and distressed debt investing with focus on risk control.',
-    topHoldings: [
-      { ticker: 'PGHY', name: 'Invesco PGHY', allocation: 20 },
-      { ticker: 'SJNK', name: 'SPDR Bloomberg Short Term High Yield', allocation: 18 },
-      { ticker: 'BKLN', name: 'Invesco Senior Loan ETF', allocation: 15 },
-      { ticker: 'HYG', name: 'iShares iBoxx High Yield', allocation: 12 },
-      { ticker: 'SPY', name: 'SPDR S&P 500 ETF', allocation: 10 },
-    ],
+    topHoldings: bookHoldings('marks'),
     allocation: {
       'High Yield Bonds': 40,
       'Senior Loans': 25,
@@ -467,13 +416,7 @@ export const investors: Investor[] = [
     title: 'Renaissance Technologies',
     description: 'Mathematician who pioneered quantitative trading using algorithms and pattern recognition.',
     strategy: 'Quantitative systematic trading based on statistical arbitrage and pattern recognition.',
-    topHoldings: [
-      { ticker: 'NVDA', name: 'NVIDIA Corp', allocation: 8 },
-      { ticker: 'META', name: 'Meta Platforms', allocation: 7 },
-      { ticker: 'AMZN', name: 'Amazon', allocation: 7 },
-      { ticker: 'GOOGL', name: 'Alphabet', allocation: 6 },
-      { ticker: 'MSFT', name: 'Microsoft', allocation: 6 },
-    ],
+    topHoldings: bookHoldings('simons'),
     allocation: {
       'Technology': 35,
       'Healthcare': 20,
@@ -489,13 +432,7 @@ export const investors: Investor[] = [
     title: 'Icahn Enterprises',
     description: 'Activist investor known for aggressive corporate raiding and shareholder activism.',
     strategy: 'Activist investing to unlock value through corporate governance changes.',
-    topHoldings: [
-      { ticker: 'IEP', name: 'Icahn Enterprises', allocation: 55 },
-      { ticker: 'CVI', name: 'CVR Energy', allocation: 12 },
-      { ticker: 'OXY', name: 'Occidental Petroleum', allocation: 10 },
-      { ticker: 'SWX', name: 'Southwest Gas', allocation: 8 },
-      { ticker: 'XRX', name: 'Xerox Holdings', allocation: 5 },
-    ],
+    topHoldings: bookHoldings('icahn'),
     allocation: {
       'Energy': 35,
       'Industrials': 25,
@@ -611,7 +548,7 @@ export const faqItems: FAQItem[] = [
   {
     id: '3',
     question: 'Which investors\' portfolios can I mimic?',
-    answer: 'Elite subscribers can mimic portfolios from legendary investors including Warren Buffett (value investing), Ray Dalio (all-weather portfolio), Cathie Wood (innovation-focused), Peter Lynch (GARP strategy), and Benjamin Graham (deep value). We regularly add new investor profiles based on user requests.',
+    answer: 'Elite subscribers can mimic model portfolios from 12 legendary investors: Warren Buffett, Ray Dalio, Cathie Wood, Peter Lynch, Benjamin Graham, George Soros, Stanley Druckenmiller, Bill Ackman, John Templeton, Howard Marks, Jim Simons, and Carl Icahn. Share counts are sized from live or cached market prices.',
   },
   {
     id: '4',

@@ -149,10 +149,11 @@ export const portfolioApi = {
     }, token);
   },
 
-  mimicInvestor: async (investorId: string, budget: number, token: string) => {
-    return apiRequest('/portfolio/mimic', {
+  mimicInvestor: async (investorId: string, budget: number, token: string, portfolioId?: string) => {
+    const path = portfolioId ? `/portfolio/${portfolioId}/mimic` : '/portfolio/mimic';
+    return apiRequest(path, {
       method: 'POST',
-      body: JSON.stringify({ investorId, budget }),
+      body: JSON.stringify({ investor: investorId, investorId, budget }),
     }, token);
   },
 };
