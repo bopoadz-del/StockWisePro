@@ -19,7 +19,8 @@ import { ScrollReveal } from '@/components/ScrollReveal';
 import { SignalBadge } from '@/components/SignalBadge';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { SparklineChart } from '@/components/SparklineChart';
-import { stocksApi, type StockQuote } from '@/lib/api/stocks';
+import { stocksApi, type ScreenerRow, type StockScore } from '@/lib/api/stocks';
+import { useScoring } from '@/hooks/useScoring';
 
 // Format ticker for display (BRK-B -> BRK.B)
 function formatTickerForDisplay(ticker: string): string {
@@ -52,70 +53,38 @@ interface StockScreenerProps {
 
 
 
-// Calculate score based on available metrics
-function calculateScore(stock: StockQuote | null | undefined): number {
-  // Safety check for null/undefined stock
-  if (!stock || typeof stock !== 'object') {
-    return 50; // Return default score
-  }
-  
-  let score = 50; // Base score
-  
-  // Factor in P/E ratio (lower is better for value)
-  if (typeof stock.pe === 'number' && stock.pe > 0) {
-    if (stock.pe < 15) score += 15;
-    else if (stock.pe < 25) score += 10;
-    else if (stock.pe < 40) score += 5;
-    else score -= 5;
-  }
-  
-  // Factor in market cap (stability)
-  if (typeof stock.marketCap === 'number' && stock.marketCap > 0) {
-    if (stock.marketCap > 500000000000) score += 10; // Large cap
-    else if (stock.marketCap > 100000000000) score += 5;
-  }
-  
-  // Factor in price momentum
-  if (typeof stock.changesPercentage === 'number') {
-    if (stock.changesPercentage > 5) score += 10;
-    else if (stock.changesPercentage > 0) score += 5;
-    else if (stock.changesPercentage < -5) score -= 10;
-    else if (stock.changesPercentage < 0) score -= 5;
-  }
-  
-  // Factor in volume (liquidity)
-  if (typeof stock.volume === 'number' && typeof stock.avgVolume === 'number' && stock.avgVolume > 0) {
-    const volumeRatio = stock.volume / stock.avgVolume;
-    if (volumeRatio > 1.5) score += 10;
-    else if (volumeRatio > 1) score += 5;
-  }
-  
-  return Math.max(0, Math.min(100, score));
+function scoreToResult(score: StockScore): StockResult {
+  return {
+    ticker: formatTickerForDisplay(score.quote.symbol || score.ticker),
+    name: score.name || score.quote.name,
+    price: score.quote.price,
+    change: score.quote.change,
+    changePercent: score.quote.changesPercentage,
+    marketCap: score.quote.marketCap,
+    score: score.finalScore,
+    signal: score.action,
+    sector: score.quote.sector,
+    volume: score.quote.volume,
+    pe: score.quote.pe,
+    sparklineData: score.sparkline,
+  };
 }
 
-function getSignalFromScore(score: number): 'buy' | 'hold' | 'sell' {
-  if (score >= 70) return 'buy';
-  if (score >= 40) return 'hold';
-  return 'sell';
-}
-
-// Generate sparkline data based on price and change
-function generateSparklineData(price: number, changePercent: number): number[] {
-  const data: number[] = [];
-  const points = 10;
-  const volatility = Math.abs(changePercent) / 100 + 0.01;
-  
-  for (let i = 0; i < points; i++) {
-    const progress = i / (points - 1);
-    const basePrice = price * (1 - changePercent / 100 * (1 - progress));
-    const noise = (Math.random() - 0.5) * price * volatility * 0.5;
-    data.push(basePrice + noise);
-  }
-  
-  // Ensure the last point matches current price
-  data[points - 1] = price;
-  
-  return data;
+function screenerRowToResult(row: ScreenerRow): StockResult {
+  return {
+    ticker: formatTickerForDisplay(row.symbol),
+    name: row.name,
+    price: row.price,
+    change: row.change,
+    changePercent: row.changesPercentage,
+    marketCap: row.marketCap,
+    score: row.score,
+    signal: row.signal,
+    sector: row.sector,
+    volume: row.volume,
+    pe: row.pe,
+    sparklineData: row.sparkline,
+  };
 }
 
 export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated }: StockScreenerProps) {
@@ -128,6 +97,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [usingDemoData, setUsingDemoData] = useState(false);
+  const { normalizedWeights } = useScoring();
 
   // Load screener stocks on mount - only once
   useEffect(() => {
@@ -178,7 +148,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
     setUsingDemoData(false);
     try {
       console.log('Fetching screener data...');
-      const response = await stocksApi.getScreener();
+      const response = await stocksApi.getScreener(normalizedWeights);
       console.log('Screener response:', response);
       
       if (response.error) {
@@ -188,54 +158,14 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       }
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-        const formattedStocks: StockResult[] = [];
-        
-        for (let i = 0; i < response.data.length; i++) {
-          const quote = response.data[i];
-          
-          // Defensive: skip invalid quotes
-          if (!quote || typeof quote !== 'object') {
-            console.warn(`Invalid quote at index ${i}:`, quote);
-            continue;
-          }
-          
-          try {
-            const safeQuote = {
-              symbol: quote.symbol || 'UNKNOWN',
-              name: quote.name || 'Unknown',
-              price: typeof quote.price === 'number' ? quote.price : 0,
-              change: typeof quote.change === 'number' ? quote.change : 0,
-              changesPercentage: typeof quote.changesPercentage === 'number' ? quote.changesPercentage : 0,
-              marketCap: typeof quote.marketCap === 'number' ? quote.marketCap : 0,
-              pe: typeof quote.pe === 'number' ? quote.pe : 20,
-              volume: typeof quote.volume === 'number' ? quote.volume : 0,
-              avgVolume: typeof quote.avgVolume === 'number' ? quote.avgVolume : (typeof quote.volume === 'number' ? quote.volume : 0),
-            };
-            
-            const score = calculateScore(safeQuote as StockQuote);
-            
-            formattedStocks.push({
-              ticker: formatTickerForDisplay(safeQuote.symbol),
-              name: safeQuote.name,
-              price: safeQuote.price,
-              change: safeQuote.change,
-              changePercent: safeQuote.changesPercentage,
-              marketCap: safeQuote.marketCap,
-              score: score,
-              signal: getSignalFromScore(score),
-              volume: safeQuote.volume,
-              pe: safeQuote.pe,
-              sparklineData: generateSparklineData(safeQuote.price, safeQuote.changesPercentage),
-            });
-          } catch (itemError) {
-            console.warn(`Error processing quote at index ${i}:`, itemError);
-          }
-        }
+        const formattedStocks = response.data
+          .filter((row) => row && typeof row === 'object' && row.symbol)
+          .map(screenerRowToResult);
         
         if (formattedStocks.length > 0) {
           console.log('Setting stocks:', formattedStocks.length);
           setStocks(formattedStocks);
-          setUsingDemoData(false); // Ensure demo mode is OFF when we have real data
+          setUsingDemoData(false);
         } else {
           console.warn('No formatted stocks, using mock');
           loadMockStocks();
@@ -282,103 +212,17 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
       console.log('Search response for query "' + query + '":', searchResponse);
       
       if (searchResponse.data && searchResponse.data.length > 0) {
-        // Fetch quotes for the matching stocks (max 5 at a time to avoid API limits)
-        const symbols = searchResponse.data.slice(0, 5).map(r => r.symbol);
-        console.log('Fetching batch quotes for symbols:', symbols);
-        
-        const quotesResponse = await stocksApi.getBatchQuotes(symbols);
-        console.log('Batch quotes response:', quotesResponse);
-        
-        if (quotesResponse.data && Array.isArray(quotesResponse.data) && quotesResponse.data.length > 0) {
-          const formattedStocks: StockResult[] = [];
-          
-          for (let i = 0; i < quotesResponse.data.length; i++) {
-            const quote = quotesResponse.data[i];
-            
-            // Defensive: skip invalid quotes
-            if (!quote || typeof quote !== 'object') {
-              console.warn(`Invalid quote at index ${i}:`, quote);
-              continue;
-            }
-            
-            try {
-              const safeQuote = {
-                symbol: quote.symbol || 'UNKNOWN',
-                name: quote.name || 'Unknown',
-                price: typeof quote.price === 'number' ? quote.price : 0,
-                change: typeof quote.change === 'number' ? quote.change : 0,
-                changesPercentage: typeof quote.changesPercentage === 'number' ? quote.changesPercentage : 0,
-                marketCap: typeof quote.marketCap === 'number' ? quote.marketCap : 0,
-                pe: typeof quote.pe === 'number' ? quote.pe : 20,
-                volume: typeof quote.volume === 'number' ? quote.volume : 0,
-                avgVolume: typeof quote.avgVolume === 'number' ? quote.avgVolume : (typeof quote.volume === 'number' ? quote.volume : 0),
-              };
-              
-              const score = calculateScore(safeQuote as StockQuote);
-              
-              formattedStocks.push({
-                ticker: formatTickerForDisplay(safeQuote.symbol),
-                name: safeQuote.name,
-                price: safeQuote.price,
-                change: safeQuote.change,
-                changePercent: safeQuote.changesPercentage,
-                marketCap: safeQuote.marketCap,
-                score: score,
-                signal: getSignalFromScore(score),
-                volume: safeQuote.volume,
-                pe: safeQuote.pe,
-                sparklineData: generateSparklineData(safeQuote.price, safeQuote.changesPercentage),
-              });
-            } catch (itemError) {
-              console.warn(`Error processing quote at index ${i}:`, itemError);
-            }
-          }
-          
-          if (formattedStocks.length > 0) {
-            console.log('Setting stocks from API:', formattedStocks.length);
-            setStocks(formattedStocks);
-          } else {
-            console.log('No formatted stocks from API, falling back to mock');
-            searchMockStocks(query);
-          }
+        const symbols = searchResponse.data.slice(0, 8).map((r) => r.symbol);
+        console.log('Fetching OpenBox scores for symbols:', symbols);
+
+        const scoresResponse = await stocksApi.getBatchScores(symbols, normalizedWeights);
+        const scores = scoresResponse.data?.scores || [];
+
+        if (scores.length > 0) {
+          setStocks(scores.map(scoreToResult));
         } else {
-          // API returned empty quotes - try individual quote fetches as fallback
-          console.log('Batch quotes empty, trying individual fetches for:', symbols.slice(0, 3));
-          const individualStocks: StockResult[] = [];
-          
-          // Try to fetch at least a few individual quotes
-          for (const symbol of symbols.slice(0, 3)) {
-            try {
-              const quoteResponse = await stocksApi.getQuote(symbol);
-              if (quoteResponse.data && quoteResponse.data.price > 0) {
-                const quote = quoteResponse.data;
-                const score = calculateScore(quote);
-                individualStocks.push({
-                  ticker: formatTickerForDisplay(quote.symbol),
-                  name: quote.name,
-                  price: quote.price,
-                  change: quote.change,
-                  changePercent: quote.changesPercentage,
-                  marketCap: quote.marketCap,
-                  score: score,
-                  signal: getSignalFromScore(score),
-                  volume: quote.volume,
-                  pe: quote.pe,
-                  sparklineData: generateSparklineData(quote.price, quote.changesPercentage),
-                });
-              }
-            } catch (e) {
-              console.warn(`Individual quote fetch failed for ${symbol}:`, e);
-            }
-          }
-          
-          if (individualStocks.length > 0) {
-            console.log('Setting stocks from individual fetches:', individualStocks.length);
-            setStocks(individualStocks);
-          } else {
-            console.log('Individual fetches also failed, using mock data');
-            searchMockStocks(query);
-          }
+          console.log('Score API returned no results, using mock data');
+          searchMockStocks(query);
         }
       } else {
         // API search returned empty - use mock search
@@ -778,7 +622,7 @@ export function StockScreener({ onSelectStock, isAuthenticated: _isAuthenticated
         {/* Data attribution */}
         <div className="mt-4 text-center">
           <p className="text-white/30 text-xs">
-            Real-time data provided by Financial Modeling Prep API
+            Scores from the OpenBox engine (Yahoo-first, FMP optional enrichment)
           </p>
         </div>
       </div>

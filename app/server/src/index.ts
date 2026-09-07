@@ -140,6 +140,9 @@ app.get('/health/deep', async (req, res) => {
   } else {
     apiStatus.twelveData = 'not_configured';
   }
+
+  apiStatus.yahoo = 'enabled';
+  apiStatus.fmp = config.apis.financialModelingPrep.key ? 'configured' : 'optional_not_configured';
   
   const allHealthy = dbHealthy;
   

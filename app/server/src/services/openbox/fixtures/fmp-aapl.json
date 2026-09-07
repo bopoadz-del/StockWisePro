@@ -1,0 +1,57 @@
+{
+  "metrics": {
+    "marketCap": 2900000000000,
+    "peRatio": 27.2,
+    "pbRatio": 36.4,
+    "priceToSalesRatio": 7.1,
+    "returnOnEquity": 1.51,
+    "returnOnAssets": 0.3,
+    "debtToEquity": 1.48,
+    "currentRatio": 1.05,
+    "dividendYield": 0.0048,
+    "revenueGrowth": 0.09,
+    "netIncomeGrowth": 0.12,
+    "netProfitMargin": 0.265,
+    "freeCashFlowPerShare": 6.4
+  },
+  "rating": {
+    "rating": "A-",
+    "ratingRecommendation": "Buy"
+  },
+  "income": [
+    {
+      "date": "2024-09-28",
+      "revenue": 391000000000,
+      "operatingIncome": 123000000000,
+      "netIncome": 102000000000,
+      "researchAndDevelopmentExpenses": 31000000000
+    },
+    {
+      "date": "2023-09-30",
+      "revenue": 383000000000,
+      "operatingIncome": 114000000000,
+      "netIncome": 97000000000,
+      "researchAndDevelopmentExpenses": 30000000000
+    }
+  ],
+  "balance": [
+    {
+      "date": "2024-09-28",
+      "totalAssets": 364000000000,
+      "totalLiabilities": 308000000000,
+      "totalCurrentAssets": 153000000000,
+      "totalCurrentLiabilities": 145000000000,
+      "retainedEarnings": 8000000000,
+      "commonStock": 15200000000
+    },
+    {
+      "date": "2023-09-30",
+      "totalAssets": 352000000000,
+      "totalLiabilities": 290000000000,
+      "totalCurrentAssets": 143000000000,
+      "totalCurrentLiabilities": 145000000000,
+      "retainedEarnings": 5000000000,
+      "commonStock": 15500000000
+    }
+  ]
+}

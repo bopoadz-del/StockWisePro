@@ -1,0 +1,87 @@
+{
+  "price": {
+    "shortName": "Apple Inc.",
+    "longName": "Apple Inc.",
+    "quoteType": "EQUITY",
+    "regularMarketPrice": { "raw": 190 },
+    "regularMarketChange": { "raw": 2.4 },
+    "regularMarketChangePercent": { "raw": 1.28 },
+    "regularMarketPreviousClose": { "raw": 187.6 },
+    "regularMarketVolume": { "raw": 54000000 },
+    "regularMarketDayLow": { "raw": 187 },
+    "regularMarketDayHigh": { "raw": 191 }
+  },
+  "summaryDetail": {
+    "previousClose": { "raw": 187.6 },
+    "marketCap": { "raw": 2900000000000 },
+    "trailingPE": { "raw": 28 },
+    "priceToSalesTrailing12Months": { "raw": 7.5 },
+    "averageVolume": { "raw": 58000000 },
+    "dividendYield": { "raw": 0.005 },
+    "fiftyTwoWeekLow": { "raw": 164 },
+    "fiftyTwoWeekHigh": { "raw": 199 },
+    "dayLow": { "raw": 187 },
+    "dayHigh": { "raw": 191 }
+  },
+  "defaultKeyStatistics": {
+    "forwardPE": { "raw": 24 },
+    "priceToBook": { "raw": 38 },
+    "beta": { "raw": 1.2 },
+    "sharesOutstanding": { "raw": 15200000000 },
+    "trailingEps": { "raw": 6.4 },
+    "forwardEps": { "raw": 7.1 }
+  },
+  "financialData": {
+    "returnOnEquity": { "raw": 1.47 },
+    "returnOnAssets": { "raw": 0.28 },
+    "profitMargins": { "raw": 0.26 },
+    "revenueGrowth": { "raw": 0.08 },
+    "earningsGrowth": { "raw": 0.11 },
+    "currentRatio": { "raw": 1.0 },
+    "debtToEquity": { "raw": 152 },
+    "freeCashflow": { "raw": 100000000000 },
+    "operatingCashflow": { "raw": 110000000000 },
+    "totalDebt": { "raw": 110000000000 },
+    "totalCash": { "raw": 62000000000 },
+    "ebitda": { "raw": 130000000000 }
+  },
+  "summaryProfile": {
+    "sector": "Technology",
+    "industry": "Consumer Electronics",
+    "longBusinessSummary": "Apple Inc. designs, manufactures, and markets smartphones and related services."
+  },
+  "incomeStatementHistory": {
+    "incomeStatementHistory": [
+      {
+        "totalRevenue": { "raw": 390000000000 },
+        "operatingIncome": { "raw": 120000000000 },
+        "netIncome": { "raw": 100000000000 }
+      },
+      {
+        "totalRevenue": { "raw": 360000000000 },
+        "operatingIncome": { "raw": 108000000000 },
+        "netIncome": { "raw": 90000000000 }
+      }
+    ]
+  },
+  "balanceSheetHistory": {
+    "balanceSheetHistory": [
+      {
+        "totalAssets": { "raw": 350000000000 },
+        "totalLiab": { "raw": 280000000000 },
+        "totalCurrentAssets": { "raw": 140000000000 },
+        "totalCurrentLiabilities": { "raw": 130000000000 },
+        "retainedEarnings": { "raw": 7000000000 },
+        "commonStockSharesOutstanding": { "raw": 15200000000 }
+      },
+      {
+        "totalAssets": { "raw": 330000000000 },
+        "totalLiab": { "raw": 270000000000 },
+        "totalCurrentAssets": { "raw": 135000000000 },
+        "totalCurrentLiabilities": { "raw": 132000000000 },
+        "retainedEarnings": { "raw": 4000000000 },
+        "commonStockSharesOutstanding": { "raw": 15500000000 }
+      }
+    ]
+  }
+}
