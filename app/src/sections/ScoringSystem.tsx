@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Info, RotateCcw, Save, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { useScoring } from '@/hooks/useScoring';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { ScoreVisualizer } from '@/components/ScoreVisualizer';
 import { cn } from '@/lib/utils';
+import { stocksApi, type StockScore } from '@/lib/api/stocks';
 
 const presets = [
   { id: 'balanced', name: 'Balanced', description: 'Equal focus on all criteria' },
@@ -21,13 +22,34 @@ export function ScoringSystem() {
   const { weights, updateWeight, resetWeights, totalWeight, isValid, applyPreset } = useScoring();
   const [expandedCriteria, setExpandedCriteria] = useState<string | null>(null);
   const [showSaveToast, setShowSaveToast] = useState(false);
+  const [preview, setPreview] = useState<StockScore | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const response = await stocksApi.postScore('AAPL', { weights });
+      if (cancelled) return;
+      if (response.data) {
+        setPreview(response.data);
+        setPreviewError(false);
+      } else {
+        setPreview(null);
+        setPreviewError(true);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [weights]);
 
   const handleSave = () => {
     setShowSaveToast(true);
     setTimeout(() => setShowSaveToast(false), 3000);
   };
 
-  const sampleScore = 78;
+  const sampleScore = preview?.finalScore;
 
   return (
     <section className="py-20 bg-[#141414]">
@@ -209,11 +231,17 @@ export function ScoringSystem() {
             <div className="bg-[#1f1f1f] rounded-xl border border-white/10 p-6 sticky top-24">
               <h3 className="text-xl font-semibold text-white mb-6">Score Preview</h3>
 
+              {previewError && !preview && (
+                <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm">
+                  Live AAPL preview unavailable. Scoring API did not return a score.
+                </div>
+              )}
+
               <div className="flex flex-col items-center mb-8">
-                <ScoreVisualizer score={sampleScore} size="xl" />
+                <ScoreVisualizer score={sampleScore ?? 0} size="xl" />
                 <div className="mt-4 text-center">
                   <span className="text-3xl font-bold text-white">AAPL</span>
-                  <p className="text-white/50 text-sm">Apple Inc.</p>
+                  <p className="text-white/50 text-sm">{preview?.name || 'Apple Inc.'}</p>
                 </div>
               </div>
 
@@ -224,20 +252,20 @@ export function ScoringSystem() {
                 </h4>
                 {defaultScoringCriteria.map((criterion) => {
                   const weight = weights[criterion.id as keyof typeof weights];
-                  const metricScore = criterion.metrics.reduce((sum, m) => sum + m.score, 0) / criterion.metrics.length;
+                  const metricScore = preview?.pillars[criterion.id as keyof typeof preview.pillars];
 
                   return (
                     <div key={criterion.id} className="space-y-1">
                       <div className="flex justify-between text-sm">
                         <span className="text-white/70">{criterion.name}</span>
                         <span className="text-white/50">
-                          {metricScore.toFixed(0)} × {weight}%
+                          {metricScore != null ? `${metricScore} × ${weight}%` : `— × ${weight}%`}
                         </span>
                       </div>
                       <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
-                          animate={{ width: `${metricScore}%` }}
+                          animate={{ width: `${metricScore ?? 0}%` }}
                           transition={{ duration: 0.8, delay: 0.3 }}
                           className="h-full bg-gold rounded-full"
                         />
@@ -251,14 +279,25 @@ export function ScoringSystem() {
               <div className="mt-6 pt-6 border-t border-white/10">
                 <div className="flex items-center justify-between">
                   <span className="text-white font-medium">Final Score</span>
-                  <span className="text-2xl font-bold text-gold">{sampleScore}</span>
+                  <span className="text-2xl font-bold text-gold">{sampleScore ?? '—'}</span>
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-white/50 text-sm">Signal</span>
-                  <span className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-500 font-semibold text-sm">
-                    BUY
+                  <span className={`px-3 py-1 rounded-full font-semibold text-sm ${
+                    preview?.action === 'buy'
+                      ? 'bg-green-500/10 border border-green-500/30 text-green-500'
+                      : preview?.action === 'sell'
+                        ? 'bg-red-500/10 border border-red-500/30 text-red-500'
+                        : 'bg-amber-500/10 border border-amber-500/30 text-amber-500'
+                  }`}>
+                    {preview?.action ? preview.action.toUpperCase() : '—'}
                   </span>
                 </div>
+                {preview && (
+                  <p className="text-white/30 text-xs mt-3">
+                    Sources: {preview.sources.join(', ')}
+                  </p>
+                )}
               </div>
             </div>
           </ScrollReveal>

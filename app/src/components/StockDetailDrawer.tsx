@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { stocksApi, type StockQuote, type KeyMetrics, type HistoricalPrice } from '@/lib/api/stocks';
+import { stocksApi, type StockQuote, type KeyMetrics, type HistoricalPrice, type StockScore } from '@/lib/api/stocks';
 import { formatCurrency, formatPercentage, formatVolume, getScoreColor } from '@/lib/utils';
 import { mockStocks } from '@/lib/data';
 import { SignalBadge } from './SignalBadge';
 import { ScoreVisualizer } from './ScoreVisualizer';
+import { useScoring } from '@/hooks/useScoring';
 import {
   XAxis,
   YAxis,
@@ -40,40 +41,6 @@ interface AlertPrice {
   condition: 'above' | 'below';
 }
 
-// Calculate score from quote and metrics
-function calculateScore(quote: StockQuote | null, metrics: KeyMetrics | null): { score: number; breakdown: Record<string, number> } {
-  if (!quote) {
-    return { score: 50, breakdown: { valuation: 50, profitability: 50, financialHealth: 50, momentum: 50 } };
-  }
-  
-  let score = 50; // Base score
-  
-  // Factor in P/E ratio
-  if (metrics?.peRatio && metrics.peRatio > 0) {
-    if (metrics.peRatio < 15) score += 15;
-    else if (metrics.peRatio < 25) score += 10;
-    else if (metrics.peRatio < 40) score += 5;
-    else score -= 5;
-  }
-  
-  // Factor in price momentum
-  if (quote.changesPercentage > 5) score += 10;
-  else if (quote.changesPercentage > 0) score += 5;
-  else if (quote.changesPercentage < -5) score -= 10;
-  else if (quote.changesPercentage < 0) score -= 5;
-  
-  score = Math.max(0, Math.min(100, score));
-  
-  // Create breakdown
-  const breakdown = {
-    valuation: metrics?.peRatio ? Math.max(0, Math.min(100, (30 - metrics.peRatio) * 3.33)) : 50,
-    profitability: metrics?.roe ? Math.min(100, metrics.roe * 100 * 2) : 50,
-    financialHealth: metrics?.debtToEquity ? Math.max(0, (1 - metrics.debtToEquity) * 100) : 50,
-    momentum: Math.min(100, Math.max(0, 50 + quote.changesPercentage * 2)),
-  };
-  
-  return { score, breakdown };
-}
 
 export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawerProps) {
   const [quote, setQuote] = useState<StockQuote | null>(null);
@@ -81,6 +48,8 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
   const [historicalData, setHistoricalData] = useState<{ date: string; price: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingDemoData, setUsingDemoData] = useState(false);
+  const [scoreResult, setScoreResult] = useState<StockScore | null>(null);
+  const { normalizedWeights } = useScoring();
   const [watchlist, setWatchlist] = useLocalStorage<string[]>('watchlist', []);
   const [alerts, setAlerts] = useLocalStorage<AlertPrice[]>('price-alerts', []);
   const [alertPrice, setAlertPrice] = useState('');
@@ -100,13 +69,21 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
     setUsingDemoData(false);
     try {
       // Fetch all data in parallel
-      const [quoteResponse, metricsResponse] = await Promise.all([
+      const [scoreResponse, quoteResponse, metricsResponse] = await Promise.all([
+        stocksApi.getScore(ticker, normalizedWeights),
         stocksApi.getQuote(ticker),
         stocksApi.getKeyMetrics(ticker),
       ]);
 
-      const quoteData = quoteResponse.data || null;
-      const metricsData = metricsResponse.data || null;
+      const scoreData = scoreResponse.data || null;
+      const quoteData = scoreData?.quote || quoteResponse.data || null;
+      const metricsData = scoreData?.metrics || metricsResponse.data || null;
+
+      if (scoreData) {
+        setScoreResult(scoreData);
+      } else {
+        setScoreResult(null);
+      }
 
       if (quoteData) {
         setQuote(quoteData);
@@ -143,6 +120,7 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
 
   const loadMockStockData = () => {
     setUsingDemoData(true);
+    setScoreResult(null);
     const mockStock = mockStocks.find(s => s.ticker === ticker);
     if (mockStock) {
       setQuote({
@@ -243,8 +221,11 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
     URL.revokeObjectURL(url);
   };
 
-  const scoreData = calculateScore(quote, metrics);
-  const signal = scoreData.score >= 70 ? 'buy' : scoreData.score >= 40 ? 'hold' : 'sell';
+  const scoreValue = scoreResult?.finalScore;
+  const signal = scoreResult?.action ?? (scoreValue && scoreValue >= 70 ? 'buy' : scoreValue && scoreValue >= 40 ? 'hold' : 'sell');
+  const pillarEntries = scoreResult
+    ? Object.entries(scoreResult.pillars)
+    : [];
 
   return (
     <AnimatePresence>
@@ -360,15 +341,15 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
                       </div>
                       <div className="flex items-center gap-3">
                         <ScoreVisualizer
-                          score={scoreData?.score || 50}
+                          score={scoreValue ?? 0}
                           size="lg"
                           showLabel={false}
                         />
                         <div>
-                          <div className={`text-3xl font-bold ${getScoreColor(scoreData?.score || 50)}`}>
-                            {scoreData?.score || 50}
+                          <div className={`text-3xl font-bold ${scoreValue != null ? getScoreColor(scoreValue) : 'text-white/40'}`}>
+                            {scoreValue ?? '—'}
                           </div>
-                          <SignalBadge signal={signal} size="sm" />
+                          {scoreResult && <SignalBadge signal={signal} size="sm" />}
                         </div>
                       </div>
                     </div>
@@ -491,11 +472,11 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
                       </div>
 
                       {/* Score Breakdown */}
-                      {scoreData && (
+                      {scoreResult && (
                         <div className="bg-[#1f1f1f] rounded-xl border border-white/10 p-4">
                           <h4 className="text-white font-semibold mb-4">Score Breakdown</h4>
                           <div className="space-y-3">
-                            {Object.entries(scoreData.breakdown).map(([key, value]) => (
+                            {pillarEntries.map(([key, value]) => (
                               <div key={key}>
                                 <div className="flex justify-between text-sm mb-1">
                                   <span className="text-white/70 capitalize">
@@ -514,6 +495,14 @@ export function StockDetailDrawer({ ticker, isOpen, onClose }: StockDetailDrawer
                               </div>
                             ))}
                           </div>
+                          <p className="text-white/30 text-xs mt-4">
+                            Sources: {scoreResult.sources.join(', ')}
+                          </p>
+                          {scoreResult.warnings.length > 0 && (
+                            <p className="text-amber-400/80 text-xs mt-2">
+                              {scoreResult.warnings.length} metric{scoreResult.warnings.length === 1 ? '' : 's'} defaulted
+                            </p>
+                          )}
                         </div>
                       )}
                     </TabsContent>

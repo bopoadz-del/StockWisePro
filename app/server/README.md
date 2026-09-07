@@ -89,14 +89,17 @@ server/
 - `POST /api/auth/reset-password` - Reset password
 
 ### Stocks
-- `GET /api/stocks/search?q=QUERY` - Search stocks
+- `GET /api/stocks/search?q=QUERY` - Search stocks (Yahoo)
 - `GET /api/stocks/quote/:ticker` - Get stock quote
 - `GET /api/stocks/quotes?symbols=AAPL,MSFT` - Get batch quotes
 - `GET /api/stocks/metrics/:ticker` - Get key metrics
 - `GET /api/stocks/historical/:ticker` - Get historical prices
 - `GET /api/stocks/indices` - Get market indices
 - `GET /api/stocks/trending` - Get trending stocks
-- `GET /api/stocks/screener` - Get screener data
+- `GET /api/stocks/screener` - Get screener data with OpenBox scores
+- `GET /api/stocks/:ticker/score` - OpenBox score (Yahoo-first, FMP optional)
+- `POST /api/stocks/:ticker/score` - Same, with optional `{ weights, preset }`
+- `POST /api/stocks/scores` - Batch scores `{ tickers, weights?, preset? }`
 
 ### Watchlist (Auth required)
 - `GET /api/watchlist` - Get user's watchlist

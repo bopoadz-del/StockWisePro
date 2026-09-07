@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Search, Trash2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { stocksApi, type StockQuote, type KeyMetrics } from '@/lib/api/stocks';
+import { stocksApi, type StockQuote, type KeyMetrics, type StockScore } from '@/lib/api/stocks';
+import { useScoring } from '@/hooks/useScoring';
 import { formatCurrency, formatPercentage, getScoreColor } from '@/lib/utils';
 import { ScoreVisualizer } from './ScoreVisualizer';
 import { SignalBadge } from './SignalBadge';
@@ -22,6 +23,8 @@ interface ComparisonStock {
   quote: StockQuote | null;
   metrics: KeyMetrics | null;
   score: number;
+  action?: 'buy' | 'hold' | 'sell';
+  pillars?: StockScore['pillars'];
   loading: boolean;
 }
 
@@ -30,33 +33,12 @@ interface StockComparisonProps {
   onClose: () => void;
 }
 
-// Calculate score from quote and metrics
-function calculateScore(quote: StockQuote | null, metrics: KeyMetrics | null): number {
-  if (!quote) return 50;
-  
-  let score = 50; // Base score
-  
-  // Factor in P/E ratio
-  if (metrics?.peRatio && metrics.peRatio > 0) {
-    if (metrics.peRatio < 15) score += 15;
-    else if (metrics.peRatio < 25) score += 10;
-    else if (metrics.peRatio < 40) score += 5;
-    else score -= 5;
-  }
-  
-  // Factor in price momentum
-  if (quote.changesPercentage > 5) score += 10;
-  else if (quote.changesPercentage > 0) score += 5;
-  else if (quote.changesPercentage < -5) score -= 10;
-  else if (quote.changesPercentage < 0) score -= 5;
-  
-  return Math.max(0, Math.min(100, score));
-}
 
 export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
   const [stocks, setStocks] = useState<ComparisonStock[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const { normalizedWeights } = useScoring();
 
   const addStock = async (ticker: string) => {
     if (stocks.length >= 4) return;
@@ -75,14 +57,15 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
     setIsAdding(false);
 
     try {
-      const [quoteResponse, metricsResponse] = await Promise.all([
+      const [scoreResponse, quoteResponse, metricsResponse] = await Promise.all([
+        stocksApi.getScore(ticker, normalizedWeights),
         stocksApi.getQuote(ticker),
         stocksApi.getKeyMetrics(ticker),
       ]);
 
-      const quote = quoteResponse.data || null;
-      const metrics = metricsResponse.data || null;
-      const score = calculateScore(quote, metrics);
+      const scored = scoreResponse.data || null;
+      const quote = scored?.quote || quoteResponse.data || null;
+      const metrics = scored?.metrics || metricsResponse.data || null;
 
       setStocks((prev) =>
         prev.map((s) =>
@@ -91,7 +74,9 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
                 ...s,
                 quote,
                 metrics,
-                score,
+                score: scored?.finalScore ?? 0,
+                action: scored?.action,
+                pillars: scored?.pillars,
                 loading: false,
               }
             : s
@@ -111,19 +96,18 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
   };
 
   // Transform for radar chart
-  const categories = ['Valuation', 'Profitability', 'Financial Health', 'Momentum'];
+  const categories = [
+    { label: 'Valuation', key: 'valuation' as const },
+    { label: 'Profitability', key: 'profitability' as const },
+    { label: 'Growth', key: 'growth' as const },
+    { label: 'Financial Health', key: 'financialHealth' as const },
+    { label: 'Momentum', key: 'momentum' as const },
+  ];
   const chartData = categories.map((cat) => {
-    const dataPoint: Record<string, number | string> = { category: cat };
+    const dataPoint: Record<string, number | string> = { category: cat.label };
     stocks.forEach((stock) => {
-      if (!stock.loading) {
-        // Simple breakdown for visualization
-        const breakdown: Record<string, number> = {
-          'Valuation': stock.metrics?.peRatio ? Math.min(100, (30 - stock.metrics.peRatio) * 3.33) : 50,
-          'Profitability': stock.metrics?.roe ? Math.min(100, stock.metrics.roe * 100 * 2) : 50,
-          'Financial Health': stock.metrics?.debtToEquity ? Math.max(0, (1 - stock.metrics.debtToEquity) * 100) : 50,
-          'Momentum': stock.quote?.changesPercentage ? Math.min(100, 50 + stock.quote.changesPercentage * 2) : 50,
-        };
-        dataPoint[stock.ticker] = Math.max(0, Math.min(100, breakdown[cat] || 50));
+      if (!stock.loading && stock.pillars) {
+        dataPoint[stock.ticker] = stock.pillars[cat.key];
       }
     });
     return dataPoint;
@@ -310,9 +294,7 @@ export function StockComparison({ isOpen, onClose }: StockComparisonProps) {
                                 <div className="h-6 bg-white/10 rounded animate-pulse mx-auto w-16" />
                               ) : (
                                 <SignalBadge
-                                  signal={
-                                    stock.score >= 70 ? 'buy' : stock.score >= 40 ? 'hold' : 'sell'
-                                  }
+                                  signal={stock.action || (stock.score >= 70 ? 'buy' : stock.score >= 40 ? 'hold' : 'sell')}
                                   size="sm"
                                 />
                               )}

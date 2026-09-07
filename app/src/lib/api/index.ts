@@ -7,7 +7,7 @@ export type { User, LoginResponse, RegisterData, LoginData } from './auth';
 
 // Stocks API
 export { stocksApi } from './stocks';
-export type { StockQuote, KeyMetrics, HistoricalPrice } from './stocks';
+export type { StockQuote, KeyMetrics, HistoricalPrice, StockScore, ScreenerRow } from './stocks';
 
 // Watchlist API
 export { watchlistApi } from './watchlist';
