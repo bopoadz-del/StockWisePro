@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DollarSign, PieChart, Check, TrendingUp, Users, Target, Shield, Sparkles, Globe, BarChart3, Building2, Landmark, Calculator, Zap, Briefcase } from 'lucide-react';
+import { DollarSign, PieChart, Check, TrendingUp, Users, Target, Shield, Sparkles, Globe, BarChart3, Building2, Landmark, Calculator, Zap, Briefcase, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { investors } from '@/lib/data';
 import { formatCurrency } from '@/lib/utils';
+import { portfolioApi, type MimicResult } from '@/lib/api/portfolio';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from 'recharts';
 
@@ -31,18 +32,38 @@ interface InvestorPortfoliosProps {
 export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: InvestorPortfoliosProps) {
   const [selectedInvestor, setSelectedInvestor] = useState(investors[0]);
   const [budget, setBudget] = useState('10000');
-  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [mimicResult, setMimicResult] = useState<MimicResult | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const budgetNum = parseFloat(budget) || 0;
 
-  const portfolioData = selectedInvestor.topHoldings.map((holding) => ({
-    name: holding.ticker,
-    value: holding.allocation,
-    fullName: holding.name,
+  const chartHoldings = mimicResult?.holdings ?? selectedInvestor.topHoldings.map((holding) => ({
+    ticker: holding.ticker,
+    weight: holding.allocation / 100,
+    allocated: 0,
   }));
 
-  const generatePortfolio = () => {
-    setShowPortfolio(true);
+  const portfolioData = chartHoldings.map((holding) => ({
+    name: holding.ticker,
+    value: Math.round(holding.weight * 1000) / 10,
+  }));
+
+  const generatePortfolio = async () => {
+    setIsGenerating(true);
+    setGenerateError(null);
+    setMimicResult(null);
+
+    const response = await portfolioApi.previewMimic(selectedInvestor.id, budgetNum);
+
+    if (response.error || !response.data) {
+      setGenerateError(response.error || 'Failed to generate portfolio from live prices.');
+      setIsGenerating(false);
+      return;
+    }
+
+    setMimicResult(response.data);
+    setIsGenerating(false);
   };
 
   return (
@@ -70,7 +91,8 @@ export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: Invest
                   key={investor.id}
                   onClick={() => {
                     setSelectedInvestor(investor);
-                    setShowPortfolio(false);
+                    setMimicResult(null);
+                    setGenerateError(null);
                   }}
                   whileHover={{ y: -4 }}
                   whileTap={{ scale: 0.98 }}
@@ -185,16 +207,24 @@ export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: Invest
                 {/* Generate Button */}
                 <Button
                   onClick={generatePortfolio}
-                  disabled={budgetNum < 1000}
+                  disabled={budgetNum < 1000 || isGenerating}
                   className="w-full h-14 bg-gold hover:bg-gold-light text-[#0a0a0a] font-semibold text-lg mb-6 disabled:opacity-50"
                 >
-                  <PieChart size={20} className="mr-2" />
-                  Generate Portfolio
+                  {isGenerating ? (
+                    <Loader2 size={20} className="mr-2 animate-spin" />
+                  ) : (
+                    <PieChart size={20} className="mr-2" />
+                  )}
+                  {isGenerating ? 'Fetching live prices…' : 'Generate Portfolio'}
                 </Button>
+
+                {generateError && (
+                  <p className="text-red-400 text-sm text-center mb-4">{generateError}</p>
+                )}
 
                 {/* Portfolio Results */}
                 <AnimatePresence>
-                  {showPortfolio && budgetNum >= 1000 && (
+                  {mimicResult && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
@@ -205,13 +235,13 @@ export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: Invest
                         <div className="bg-[#141414] rounded-lg p-4">
                           <span className="text-white/50 text-sm">Portfolio Value</span>
                           <div className="text-2xl font-bold text-white">
-                            {formatCurrency(budgetNum * 0.98)}
+                            {formatCurrency(mimicResult.totalAllocated)}
                           </div>
                         </div>
                         <div className="bg-[#141414] rounded-lg p-4">
                           <span className="text-white/50 text-sm">Cash Remaining</span>
                           <div className="text-2xl font-bold text-gold">
-                            {formatCurrency(budgetNum * 0.02)}
+                            {formatCurrency(mimicResult.residualCash)}
                           </div>
                         </div>
                       </div>
@@ -257,12 +287,8 @@ export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: Invest
                       </div>
 
                       {/* Holdings List */}
-                      <div className="space-y-2">
-                        {selectedInvestor.topHoldings.slice(0, 5).map((holding, index) => {
-                          const allocationValue = (budgetNum * holding.allocation) / 100;
-                          const shares = Math.floor(allocationValue / 150);
-
-                          return (
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        {mimicResult.holdings.map((holding, index) => (
                             <div
                               key={holding.ticker}
                               className="flex items-center justify-between py-2 px-3 bg-[#141414] rounded-lg"
@@ -281,17 +307,21 @@ export function InvestorPortfolios({ isAuthenticated: _isAuthenticated }: Invest
                                       ][index % 5],
                                   }}
                                 />
-                                <span className="text-white font-medium">{holding.ticker}</span>
+                                <div>
+                                  <span className="text-white font-medium">{holding.ticker}</span>
+                                  <span className="text-white/40 text-xs ml-2">
+                                    {formatCurrency(holding.price)}
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex items-center gap-4 text-sm">
-                                <span className="text-white/50">{shares} shares</span>
+                                <span className="text-white/50">{holding.shares} shares</span>
                                 <span className="text-gold">
-                                  {formatCurrency(allocationValue)}
+                                  {formatCurrency(holding.allocated)}
                                 </span>
                               </div>
                             </div>
-                          );
-                        })}
+                          ))}
                       </div>
 
                       <Button

@@ -1,9 +1,48 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuth } from '../middleware/auth';
 import { prisma } from '../config/database';
 import { z } from 'zod';
+import {
+  isMissingPricesError,
+  isUnknownInvestorError,
+  listInvestorBooks,
+} from '../data/investorAllocations';
+import { buildMimicPortfolio, mimicAllocationSnapshot } from '../services/mimicService';
 
 const router = Router();
+
+const mimicRequestSchema = z.object({
+  investor: z.string().min(1).optional(),
+  investorId: z.string().min(1).optional(),
+  budget: z.number().positive(),
+}).refine((data) => Boolean(data.investor || data.investorId), {
+  message: 'investor is required',
+});
+
+function parseMimicBody(body: unknown) {
+  const data = mimicRequestSchema.parse(body);
+  return {
+    investor: (data.investor || data.investorId) as string,
+    budget: data.budget,
+  };
+}
+
+function sendMimicError(res: any, error: unknown) {
+  if (error instanceof z.ZodError) {
+    return res.status(400).json({ error: 'Invalid input', details: error.errors });
+  }
+  if (isUnknownInvestorError(error)) {
+    return res.status(400).json({ error: 'Unknown investor', investor: error.investor });
+  }
+  if (isMissingPricesError(error)) {
+    return res.status(502).json({
+      error: 'Unable to fetch live or cached prices',
+      missing: error.missing,
+    });
+  }
+  console.error('Mimic portfolio error:', error);
+  return res.status(500).json({ error: 'Failed to mimic portfolio' });
+}
 
 // Get all portfolios
 router.get('/', authenticate, async (req, res) => {
@@ -56,6 +95,32 @@ router.post('/', authenticate, async (req, res) => {
     }
     console.error('Create portfolio error:', error);
     res.status(500).json({ error: 'Failed to create portfolio' });
+  }
+});
+
+// Discover the 12 model books (ids + aliases + holdings)
+router.get('/investors', optionalAuth, async (_req, res) => {
+  const investors = listInvestorBooks().map((book) => ({
+    id: book.id,
+    name: book.name,
+    holdings: book.holdings.map((h) => ({
+      ticker: h.ticker,
+      name: h.name,
+      weight: h.weight,
+      allocation: Math.round(h.weight * 1000) / 10,
+    })),
+  }));
+  res.json({ investors });
+});
+
+// Preview a mimic (no portfolio write). Used by the marketing UI and mobile.
+router.post('/mimic', optionalAuth, async (req, res) => {
+  try {
+    const { investor, budget } = parseMimicBody(req.body);
+    const result = await buildMimicPortfolio(investor, budget);
+    res.json(result);
+  } catch (error) {
+    sendMimicError(res, error);
   }
 });
 
@@ -237,58 +302,67 @@ router.delete('/:id/holdings/:ticker', authenticate, async (req, res) => {
   }
 });
 
-// Mimic investor portfolio
+// Persist a mimic onto an existing portfolio
 router.post('/:id/mimic', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const schema = z.object({
-      investor: z.string(),
-      budget: z.number().positive(),
-    });
-    
-    const data = schema.parse(req.body);
-    
-    // Get investor allocation
-    const investorAllocations: Record<string, Record<string, number>> = {
-      warren_buffett: { AAPL: 0.40, BAC: 0.15, KO: 0.10, AXP: 0.08, OXY: 0.07 },
-      ray_dalio: { SPY: 0.30, GLD: 0.15, TLT: 0.15, IEF: 0.10, VTI: 0.10 },
-      cathie_wood: { TSLA: 0.20, ROKU: 0.08, SQ: 0.08, ZM: 0.07, COIN: 0.07 },
-    };
-    
-    const allocation = investorAllocations[data.investor];
-    
-    if (!allocation) {
-      return res.status(400).json({ error: 'Unknown investor' });
-    }
-    
-    // Calculate holdings based on budget
-    const holdings = Object.entries(allocation).map(([ticker, weight]) => ({
-      ticker,
-      budget: data.budget * weight,
-      // Note: Would fetch current price and calculate shares in real implementation
-      estimatedShares: Math.floor((data.budget * weight) / 100), // Placeholder
-    }));
-    
-    // Update portfolio
-    await prisma.portfolio.update({
-      where: { id },
-      data: {
-        mimicInvestor: data.investor,
-        mimicAllocation: allocation,
+    const { investor, budget } = parseMimicBody(req.body);
+
+    const portfolio = await prisma.portfolio.findFirst({
+      where: {
+        id,
+        organizationId: req.organization!.id,
+        deletedAt: null,
       },
     });
-    
-    res.json({
-      investor: data.investor,
-      budget: data.budget,
-      holdings,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+
+    if (!portfolio) {
+      return res.status(404).json({ error: 'Portfolio not found' });
     }
-    console.error('Mimic portfolio error:', error);
-    res.status(500).json({ error: 'Failed to mimic portfolio' });
+
+    const result = await buildMimicPortfolio(investor, budget);
+    const allocation = mimicAllocationSnapshot(investor);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.portfolio.update({
+        where: { id },
+        data: {
+          mimicInvestor: result.investor,
+          mimicAllocation: allocation,
+        },
+      });
+
+      await tx.portfolioHolding.deleteMany({ where: { portfolioId: id } });
+
+      const sized = result.holdings.filter((h) => h.shares > 0);
+      if (sized.length > 0) {
+        await tx.portfolioHolding.createMany({
+          data: sized.map((h) => ({
+            portfolioId: id,
+            ticker: h.ticker,
+            shares: h.shares,
+            avgCostBasis: h.price,
+          })),
+        });
+
+        await tx.portfolioTransaction.createMany({
+          data: sized.map((h) => ({
+            portfolioId: id,
+            ticker: h.ticker,
+            type: 'BUY',
+            shares: h.shares,
+            price: h.price,
+            totalAmount: h.allocated,
+            executedAt: new Date(),
+            notes: `Mimic ${result.investorName}`,
+          })),
+        });
+      }
+    });
+
+    res.json(result);
+  } catch (error) {
+    sendMimicError(res, error);
   }
 });
 

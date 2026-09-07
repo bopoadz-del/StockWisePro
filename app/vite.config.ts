@@ -10,6 +10,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@shared/investorAllocations": path.resolve(
+        __dirname,
+        "./server/src/data/investorAllocations.ts"
+      ),
     },
   },
 });

@@ -64,13 +64,13 @@ jobs:
       - name: Run type check
         run: npm run typecheck --if-present
       
-      # - name: Run tests
-      #   run: npm test
-      #   env:
-      #     DATABASE_URL: postgresql://test:test@localhost:5432/test
-      #     REDIS_URL: redis://localhost:6379
-      #     JWT_SECRET: test-secret
-      #     ENCRYPTION_KEY: test-32-char-encryption-key
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-secret
+          ENCRYPTION_KEY: test-32-char-encryption-key
 
   # Frontend Build Check
   frontend-checks:

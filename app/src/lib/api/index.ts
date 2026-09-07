@@ -16,3 +16,7 @@ export type { WatchlistItem } from './watchlist';
 // Alerts API
 export { alertsApi } from './alerts';
 export type { PriceAlert, CreateAlertData } from './alerts';
+
+// Portfolio API
+export { portfolioApi } from './portfolio';
+export type { MimicHolding, MimicResult } from './portfolio';
