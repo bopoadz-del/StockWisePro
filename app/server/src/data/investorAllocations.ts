@@ -187,7 +187,7 @@ export const INVESTOR_BOOKS: Record<CanonicalInvestorId, InvestorBook> = {
       { ticker: 'TSLA', name: 'Tesla Inc.', weight: 0.098 },
       { ticker: 'COIN', name: 'Coinbase Global', weight: 0.072 },
       { ticker: 'ROKU', name: 'Roku Inc.', weight: 0.065 },
-      { ticker: 'SQ', name: 'Block Inc.', weight: 0.058 },
+      { ticker: 'XYZ', name: 'Block Inc.', weight: 0.058 },
       { ticker: 'ZM', name: 'Zoom Video', weight: 0.052 },
       { ticker: 'PATH', name: 'UiPath', weight: 0.12 },
       { ticker: 'CRSP', name: 'CRISPR Therapeutics', weight: 0.11 },

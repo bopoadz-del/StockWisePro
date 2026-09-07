@@ -245,45 +245,7 @@ export class StockPriceService {
   }
 
   private async getFromYahoo(tickers: string[]): Promise<Quote[]> {
-    const symbols = tickers.map((t) => this.toYahooSymbol(t)).join(',');
-    const response = await axios.get('https://query1.finance.yahoo.com/v7/finance/quote', {
-      params: { symbols },
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        Accept: 'application/json',
-      },
-    });
-
-    const results = response.data?.quoteResponse?.result;
-    if (!Array.isArray(results) || results.length === 0) {
-      return this.getFromYahooCharts(tickers);
-    }
-
-    const quotes = results
-      .map((row: any) => {
-        const price = parseFloat(row.regularMarketPrice);
-        if (!row.symbol || !Number.isFinite(price) || price <= 0) return null;
-        return {
-          ticker: this.fromYahooSymbol(row.symbol),
-          price,
-          change: parseFloat(row.regularMarketChange) || 0,
-          changePercent: parseFloat(row.regularMarketChangePercent) || 0,
-          volume: parseInt(row.regularMarketVolume, 10) || 0,
-          timestamp: new Date(),
-          source: 'yahoo',
-        } as Quote;
-      })
-      .filter((q: Quote | null): q is Quote => q !== null);
-
-    const found = new Set(quotes.map((q) => q.ticker));
-    const stillMissing = tickers.filter((t) => !found.has(t.toUpperCase()) && !found.has(this.fromYahooSymbol(t)));
-    if (stillMissing.length > 0) {
-      const extras = await this.getFromYahooCharts(stillMissing);
-      quotes.push(...extras);
-    }
-
-    return quotes;
+    return this.getFromYahooCharts(tickers);
   }
 
   private async getFromYahooCharts(tickers: string[]): Promise<Quote[]> {
