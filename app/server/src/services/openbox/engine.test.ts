@@ -88,6 +88,25 @@ describe('OpenBox web scoring engine', () => {
     expect(withFmp.warnings.some((w) => w.includes('ROA'))).toBe(false);
   });
 
+  it('still scores from chart history when quoteSummary is missing', async () => {
+    const result = await computeStockScore('AAPL', {
+      providers: providers({
+        getQuoteSummary: async () => ({
+          price: {
+            shortName: 'Apple Inc.',
+            quoteType: 'EQUITY',
+            regularMarketPrice: 190,
+          },
+        }),
+      }),
+    });
+
+    expect(result.finalScore).toBeGreaterThanOrEqual(0);
+    expect(result.sources).toEqual(['yahoo']);
+    expect(result.warnings.some((w) => w.includes('quoteSummary') || w.includes('defaulted'))).toBe(true);
+    expect(result.pillars.momentum).not.toBe(50);
+  });
+
   it('returns a clear unknown-ticker error', async () => {
     await expect(
       computeStockScore('ZZZZNOTATICKER', {

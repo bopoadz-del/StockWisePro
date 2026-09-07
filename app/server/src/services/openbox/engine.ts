@@ -248,17 +248,31 @@ export async function computeStockScore(ticker: string, options: ScoreOptions = 
     providers.getFmpEnrichment(upper).catch(() => null),
   ]);
 
-  if (!quoteLooksValid(summary)) {
+  if (!quoteLooksValid(summary) && history.length === 0) {
     throw new UnknownTickerError(upper);
   }
 
-  const fd = summary!.financialData || {};
-  const dks = summary!.defaultKeyStatistics || {};
-  const sd = summary!.summaryDetail || {};
-  const profile = summary!.summaryProfile || {};
-  const priceMod = summary!.price || {};
-  const yahooInc = summary!.incomeStatementHistory?.incomeStatementHistory;
-  const yahooBs = summary!.balanceSheetHistory?.balanceSheetHistory;
+  const effectiveSummary: YahooQuoteSummary = quoteLooksValid(summary)
+    ? summary!
+    : {
+        price: {
+          shortName: upper,
+          quoteType: 'EQUITY',
+          regularMarketPrice: history[history.length - 1]?.close,
+        },
+      };
+
+  if (!effectiveSummary.financialData) {
+    warnings.push('Fundamentals limited: Yahoo quoteSummary unavailable, using chart snapshot');
+  }
+
+  const fd = effectiveSummary.financialData || {};
+  const dks = effectiveSummary.defaultKeyStatistics || {};
+  const sd = effectiveSummary.summaryDetail || {};
+  const profile = effectiveSummary.summaryProfile || {};
+  const priceMod = effectiveSummary.price || {};
+  const yahooInc = effectiveSummary.incomeStatementHistory?.incomeStatementHistory;
+  const yahooBs = effectiveSummary.balanceSheetHistory?.balanceSheetHistory;
   const fmpMapped = fmpStatements(fmp);
   const inc = yahooInc && yahooInc.length >= 2 ? yahooInc : fmpMapped.inc;
   const bs = yahooBs && yahooBs.length >= 2 ? yahooBs : fmpMapped.bs;
